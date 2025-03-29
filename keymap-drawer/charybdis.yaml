@@ -20,9 +20,9 @@ layers:
   - {t: F, h: LEFT SHIFT}
   - G
   - H
-  - J
-  - K
-  - L
+  - {t: J, h: RIGHT SHIFT}
+  - {t: K, h: RIGHT CONTROL}
+  - {t: L, h: RIGHT ALT}
   - ;
   - ''''
   - {t: '[', h: LEFT WIN}
@@ -38,8 +38,8 @@ layers:
   - /
   - {t: ']', h: RIGHT WIN}
   - Mouse
-  - {t: SPACE, h: BASE}
-  - {t: DELETE, h: BASE}
+  - {t: SPACE, h: symbol}
+  - {t: DELETE, h: arrow}
   - {t: BACK SPACE, h: BASE}
   - {t: ENTER, h: LEFT SHIFT}
   Mouse:
@@ -123,7 +123,7 @@ layers:
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
-  - {t: ▽, type: trans}
+  - {type: held}
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
   symbol:
@@ -164,7 +164,7 @@ layers:
   - '0'
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
-  - {t: ▽, type: trans}
+  - {type: held}
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
   - {t: ▽, type: trans}
