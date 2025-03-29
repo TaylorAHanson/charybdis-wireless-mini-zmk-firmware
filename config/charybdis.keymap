@@ -96,16 +96,16 @@
 &kp ESCAPE                 &kp Q  &kp W                &kp E             &kp R                  &kp T           &kp Y            &kp U                    &kp I              &kp O                  &kp P          &kp NON_US_BACKSLASH
 &kp TAB                    &kp A  &hm_left LEFT_ALT S  &hm_left LCTRL D  &hm_left LEFT_SHIFT F  &kp G           &kp H            &hm_right RIGHT_SHIFT J  &hm_right RCTRL K  &hm_right RIGHT_ALT L  &kp SEMICOLON  &kp SQT
 &mt LEFT_WIN LEFT_BRACKET  &kp Z  &kp X                &kp C             &kp V                  &kp B           &kp N            &kp M                    &kp COMMA          &kp PERIOD             &kp SLASH      &mt RIGHT_WIN RIGHT_BRACKET
-                                                       &mo 1             &lt 3 SPACE            &lt 2 DELETE    &lt 4 BACKSPACE  &kp ENTER
+                                                       &mo 1             &lt 3 SPACE            &lt 2 DELETE    &lt 4 BACKSPACE  &mt LEFT_SHIFT ENTER
             >;
         };
 
         NUM {
             bindings = <
-&trans  &none  &none  &none  &none          &none        &kp ASTRK   &hm F7 N7  &hm F8 N8  &hm F9 N9  &kp F10        &none
-&trans  &none  &none  &none  &none          &none        &kp MINUS   &hm F4 N4  &hm F5 N5  &hm F6 N6  &hm F11 PLUS   &trans
-&none   &none  &none  &none  &kp BACKSPACE  &kp SPACE    &td_equals  &hm F1 N1  &hm F2 N2  &hm F3 N3  &hm F12 SLASH  &none
-                      &none  &none          &trans       &kp DOT     &kp N0
+&trans        &none  &none         &none             &none           &none     &none       &hm F7 N7  &hm F8 N8  &hm F9 N9  &kp F10        &none
+&trans        &none  &kp LEFT_ALT  &kp LEFT_CONTROL  &kp LEFT_SHIFT  &none     &kp MINUS   &hm F4 N4  &hm F5 N5  &hm F6 N6  &hm F11 PLUS   &trans
+&kp LEFT_WIN  &none  &none         &none             &none           &none     &td_equals  &hm F1 N1  &hm F2 N2  &hm F3 N3  &hm F12 SLASH  &none
+                                   &trans            &trans          &trans    &trans      &trans
             >;
         };
 
