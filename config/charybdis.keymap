@@ -102,10 +102,10 @@
 
         NUM {
             bindings = <
-&trans        &none  &none         &none             &none           &none     &none       &hm F7 N7  &hm F8 N8  &hm F9 N9  &kp F10        &none
-&trans        &none  &kp LEFT_ALT  &kp LEFT_CONTROL  &kp LEFT_SHIFT  &none     &kp MINUS   &hm F4 N4  &hm F5 N5  &hm F6 N6  &hm F11 PLUS   &trans
-&kp LEFT_WIN  &none  &none         &none             &none           &none     &td_equals  &hm F1 N1  &hm F2 N2  &hm F3 N3  &hm F12 SLASH  &none
-                                   &trans            &trans          &trans    &trans      &trans
+&trans        &none  &none         &none             &none           &none     &kp F12        &kp K_BACK      &msc SCRL_UP    &kp K_FORWARD    &none  &none
+&trans        &none  &kp LEFT_ALT  &kp LEFT_CONTROL  &kp LEFT_SHIFT  &none     &kp K_REFRESH  &mkp MB1        &mkp MB2        &mkp MB3         &none  &none
+&kp LEFT_WIN  &none  &none         &none             &none           &none     &none          &msc SCRL_LEFT  &msc SCRL_DOWN  &msc SCRL_RIGHT  &none  &none
+                                   &trans            &trans          &trans    &trans         &trans
             >;
         };
 
