@@ -31,9 +31,6 @@
 };
 
 / {
-    chosen {
-        zephyr,console = &uart0;
-    };
 
     trackball_listener {
         compatible = "zmk,input-listener";
