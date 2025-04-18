@@ -30,8 +30,10 @@
 		;
 };
 
-chosen {
-    zephyr,console = &uart0;
+/ {
+    chosen {
+        zephyr,console = &uart0;
+    };
 };
 
 &spi0 {
