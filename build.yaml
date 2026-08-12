@@ -2,16 +2,16 @@
 ---
 include:
   # Charybdis Left Half (Peripheral)
-  - board: nice_nano_v2
+  - board: nice_nano
     shield: charybdis_left
     artifact-name: charybdis_left
 
   # Charybdis Right Half (Central with Trackball)
-  - board: nice_nano_v2
+  - board: nice_nano
     shield: charybdis_right
     artifact-name: charybdis_right
 
   # Settings Reset (Clears stale Bluetooth pairings)
-  - board: nice_nano_v2
+  - board: nice_nano
     shield: settings_reset
     artifact-name: settings_reset
