@@ -1,3 +1,5 @@
+name: charybdis
 build:
   settings:
     board_root: .
+    dts_root: .

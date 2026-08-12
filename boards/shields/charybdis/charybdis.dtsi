@@ -1,14 +1,11 @@
 #include <dt-bindings/zmk/matrix_transform.h>
+#include <zephyr/dt-bindings/gpio/gpio.h>
 #include "charybdis-layouts.dtsi"
 
 / {
     chosen {
         zmk,kscan = &kscan0;
         zmk,physical-layout = &charybdis_physical_layout;
-    };
-
-    vbatt: vbatt {
-        compatible = "zmk,battery-nrf-vddh";
     };
 
     default_transform: keymap_transform_0 {
@@ -38,6 +35,7 @@
     };
 	
     kscan0: kscan {
+        compatible = "zmk,kscan-gpio-matrix";
         wakeup-source;
         diode-direction = "row2col";
     };

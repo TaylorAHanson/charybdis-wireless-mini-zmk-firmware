@@ -1,3 +1,5 @@
 / {
-    /* deleted evrything */
+    combos {
+        compatible = "zmk,combos";
+    };
 };
