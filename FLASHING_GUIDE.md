@@ -9,10 +9,16 @@ This guide walks you through downloading your built firmware, flashing the nice!
 When you push changes to your GitHub repository (or click **Run workflow** manually under the Actions tab):
 1. GitHub Actions automatically compiles the firmware for both halves plus a reset file.
 2. In the **Actions** tab on your GitHub repository, click the latest workflow run.
-3. Scroll down to the **Artifacts** section and download the ZIP file (named `firmware` or individual `.uf2` files):
-   - `charybdis_left.uf2` (Left Half - Peripheral)
-   - `charybdis_right.uf2` (Right Half - Central & Trackball)
-   - `settings_reset.uf2` (Settings Reset / Pairing Clear)
+3. Scroll down to the **Artifacts** section and download the ZIP file(s) (e.g., `firmware.zip` or `charybdis_right.zip`).
+4. **Extract / Unzip the downloaded ZIP file**:
+   - Right-click the `.zip` file and select **Extract All...** (or open and copy the `.uf2` files to your Desktop/Downloads).
+   - Inside you will find the `.uf2` files:
+     - `charybdis_left.uf2` (Left Half - Peripheral)
+     - `charybdis_right.uf2` (Right Half - Central & Trackball)
+     - `settings_reset.uf2` (Settings Reset / Pairing Clear)
+
+> [!WARNING]
+> **You MUST unzip the archive first.** Do not drag the `.zip` file directly onto the `NICENANO` drive—only drag the extracted `.uf2` file.
 
 ---
 
@@ -39,8 +45,6 @@ When you push changes to your GitHub repository (or click **Run workflow** manua
 3. When the `NICENANO` drive appears, drag and drop `charybdis_left.uf2`.
 4. The nice!nano will flash and reboot automatically.
 5. Unplug the Left half.
-
----
 
 ### Step 2.3: Flash the Right Half (Central + Trackball)
 1. Connect the **Right half** to your computer via USB-C.
