@@ -76,11 +76,15 @@ This firmware is configured for standard Charybdis 3x6 with a 1:1 straight-throu
 | Sensor Pin | Ribbon Cable Wire | Mainboard Trace | Controller GPIO | Role in Software |
 | :--- | :--- | :--- | :--- | :--- |
 | **GND** | Pin 1 | GND | GND Rail | Sensor Ground |
-| **MOTION** | Pin 2 | MISO | `P1.11` (Pro Micro 14) | Hardware Interrupt (`irq-gpios`) |
-| **SCLK** | Pin 3 | SCLK | `P1.13` (Pro Micro 15) | SPI Clock (`SPIM_SCK`) |
-| **SDIO** | Pin 4 | MOSI | `P0.10` (Pro Micro 16) | Half-Duplex SPI (`SPIM_MOSI`/`SPIM_MISO`) |
+| **MOTION** | Pin 2 | MISO | `P0.06` (Pro Micro TX0) | Hardware Interrupt (`irq-gpios`) |
+| **SCLK** | Pin 3 | SCLK | `P0.08` (Pro Micro RX1) | SPI Clock (`SPIM_SCK`) |
+| **SDIO** | Pin 4 | MOSI | `P0.17` (Pro Micro 2) | Physical SPI Data Line (`SPIM_MISO`) |
 | **NCS** | Pin 5 | CS | `P0.20` (Pro Micro 3) | Chip Select (`cs-gpios`) |
 | **VCC** | Pin 6 | VCC | 3.3V / VCC Rail | Sensor Power (3.3V) |
+
+> [!IMPORTANT]
+> **nRF52 3-Wire Resistor Hack**
+> Due to the nRF52's Over-Read Character (ORC) hardware behavior, a true 3-wire SPI configuration on a single pin will fail (returning `0xFF`). A 2.2kΩ resistor must be soldered between the physical `SDIO` pin (`P0.17`, 5th pin down on the left) and an unused `MOSI` driver pin (e.g., `P0.28`, 5th pin down on the right).
 
 ### Key Driver Configurations:
 - **Compatible Driver**: `pixart,pmw3610-alt`
