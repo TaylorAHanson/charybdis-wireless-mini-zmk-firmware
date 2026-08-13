@@ -2,17 +2,17 @@
 ---
 include:
   # Charybdis Left Half (Peripheral)
-  - board: nice_nano
+  - board: nice_nano_v2
     shield: charybdis_left
     artifact-name: charybdis_left
 
   # Charybdis Right Half (Central with Trackball + USB Debug Logging)
-  - board: nice_nano
+  - board: nice_nano_v2
     shield: charybdis_right
     snippet: zmk-usb-logging
     artifact-name: charybdis_right
 
   # Settings Reset (Clears stale Bluetooth pairings)
-  - board: nice_nano
+  - board: nice_nano_v2
     shield: settings_reset
     artifact-name: settings_reset
