@@ -19,25 +19,29 @@
     };
 };
 
-&spi0 {
-    status = "okay";
-    compatible = "nordic,nrf-spim";
-    pinctrl-0 = <&spi0_default>;
-    pinctrl-1 = <&spi0_sleep>;
-    pinctrl-names = "default", "sleep";
-    cs-gpios = <&gpio0 20 GPIO_ACTIVE_LOW>;
-    overrun-character = <0x00>;
-
-    trackball: trackball@0 {
+/ {
+    bitbang_spi: bitbang-spi {
+        compatible = "zephyr,spi-bitbang";
+        #address-cells = <1>;
+        #size-cells = <0>;
+        clk-gpios = <&gpio0 8 GPIO_ACTIVE_HIGH>;
+        mosi-gpios = <&gpio0 17 GPIO_ACTIVE_HIGH>;
+        miso-gpios = <&gpio0 31 GPIO_ACTIVE_HIGH>;
+        cs-gpios = <&gpio0 20 GPIO_ACTIVE_LOW>;
         status = "okay";
-        compatible = "pixart,pmw3610";
-        reg = <0>;
-        spi-max-frequency = <2000000>;
-        spi-cpol;
-        spi-cpha;
-        motion-gpios = <&gpio0 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
-        zephyr,axis-x = <INPUT_REL_X>;
-        zephyr,axis-y = <INPUT_REL_Y>;
+
+        trackball: trackball@0 {
+            status = "okay";
+            compatible = "pixart,pmw3610";
+            reg = <0>;
+            spi-max-frequency = <2000000>;
+            spi-cpol;
+            spi-cpha;
+            duplex = <2048>; /* SPI_HALF_DUPLEX */
+            motion-gpios = <&gpio0 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+            zephyr,axis-x = <INPUT_REL_X>;
+            zephyr,axis-y = <INPUT_REL_Y>;
+        };
     };
 };
 
