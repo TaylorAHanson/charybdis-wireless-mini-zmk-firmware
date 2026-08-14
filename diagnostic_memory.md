@@ -112,6 +112,8 @@ Even with the `badjeff` alt driver successfully executing SPI transfers (avoidin
     *   `swap-xy`, `invert-x`, and `invert-y` must be removed from the sensor node entirely. They are now handled by the ZMK input subsystem using `input-processors = <&zip_xy_transform (INPUT_TRANSFORM_XY_SWAP | INPUT_TRANSFORM_X_INVERT)>;` inside the `zmk,input-listener` node, which requires `#include <dt-bindings/zmk/input_transform.h>` AND `#include <input/processors.dtsi>`.
     *   `evt-type` is no longer supported/required by the sensor node itself.
     *   The `CONFIG_PMW3610_ALT_INIT_POWER_UP_EXTRA_DELAY_MS` Kconfig option is invalid for the built-in driver.
+    *   **The Schema Conflict (CMake Failure):** Zephyr 4.1's native schema (`pixart,pmw3610.yaml`) strictly requires `motion-gpios`. If you are using the `badjeff` driver but forget to append `-alt` to the compatible string (`compatible = "pixart,pmw3610-alt";`), the devicetree compiler will match against the upstream Zephyr schema instead of the `badjeff` schema, resulting in an error complaining that `motion-gpios` is missing.
+    *   **Badjeff Schema Requirements:** When successfully using `pixart,pmw3610-alt`, the compiler enforces the `badjeff` custom schema, which specifically requires `evt-type = <INPUT_EV_REL>;` and `cpi = <600>;`. Missing these will cause a CMake execution failure.
 
 ## The Software Boot Delay (Native vs Alt Driver)
 Even with the physical resistor hack working perfectly, you cannot use the official Zephyr upstream driver out-of-the-box on a wireless board using `ext-power`.
