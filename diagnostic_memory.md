@@ -112,3 +112,23 @@ Even with the `badjeff` alt driver successfully executing SPI transfers (avoidin
     *   `swap-xy`, `invert-x`, and `invert-y` must be removed from the sensor node entirely. They are now handled by the ZMK input subsystem using `input-processors = <&zip_xy_transform (INPUT_TRANSFORM_XY_SWAP | INPUT_TRANSFORM_X_INVERT)>;` inside the `zmk,input-listener` node, which requires `#include <dt-bindings/zmk/input_transform.h>` AND `#include <input/processors.dtsi>`.
     *   `evt-type` is no longer supported/required by the sensor node itself.
     *   The `CONFIG_PMW3610_ALT_INIT_POWER_UP_EXTRA_DELAY_MS` Kconfig option is invalid for the built-in driver.
+
+## The Software Boot Delay (Native vs Alt Driver)
+Even with the physical resistor hack working perfectly, you cannot use the official Zephyr upstream driver out-of-the-box on a wireless board using `ext-power`.
+*   **The `ext-power` Problem:** ZMK routes sensor power through a MOSFET to save battery. This rail takes hundreds of milliseconds to fully turn on.
+*   **The Native Driver Failure:** The official upstream Zephyr `pixart,pmw3610` driver fires its initialization sequence instantly on boot. It hits the sensor before power is stable, reads an empty bus (`0xFF`), throws `Invalid product id: ff`, and crashes with `-134`.
+*   **The `badjeff` Solution:** The `badjeff/zmk-pmw3610-driver` module was specifically built by the community to inject a 1-second software delay *before* initialization, allowing the power rail to stabilize.
+
+### Critical Driver Configurations (Do Not Cross Streams)
+If you switch between the native driver and the `badjeff` driver, you **must** change ALL of these properties, or the build will fail:
+
+| Property / Kconfig | Native Zephyr Upstream | `badjeff` Alt Driver |
+| :--- | :--- | :--- |
+| **Kconfigs** | `(None)` | `CONFIG_PMW3610_ALT=y` <br> `CONFIG_PMW3610_ALT_INIT_POWER_UP_EXTRA_DELAY_MS=1000` |
+| **Compatible** | `compatible = "pixart,pmw3610";` | `compatible = "pixart,pmw3610-alt";` |
+| **IRQ Pin** | `motion-gpios` | `irq-gpios` |
+| **Resolution** | `res-cpi` | `cpi` |
+| **Axes** | `zephyr,axis-x = <INPUT_REL_X>;`<br>`zephyr,axis-y = <INPUT_REL_Y>;` | `x-input-code = <INPUT_REL_X>;`<br>`y-input-code = <INPUT_REL_Y>;`<br>`evt-type = <INPUT_EV_REL>;` |
+| **Axis Transforms** | Handled via `<&zip_xy_transform>` on the `zmk,input-listener` node. | Handled via `swap-xy;` and `invert-x;` directly on the sensor node. |
+
+If you ever see a Kconfig error like `undefined symbol INPUT_PMW3610_INIT_PRIORITY`, it is because the specific Kconfig does not exist in the driver currently active in `west.yml`.

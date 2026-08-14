@@ -1,6 +1,4 @@
 #include <zephyr/dt-bindings/input/input-event-codes.h>
-#include <dt-bindings/zmk/input_transform.h>
-#include <input/processors.dtsi>
 
 &pinctrl {
     spi0_default: spi0_default {
@@ -8,6 +6,7 @@
             psels = <NRF_PSEL(SPIM_SCK, 0, 8)>,
                 <NRF_PSEL(SPIM_MOSI, 0, 31)>,
                 <NRF_PSEL(SPIM_MISO, 0, 17)>;
+            bias-pull-up;
         };
     };
 
@@ -17,6 +16,7 @@
                 <NRF_PSEL(SPIM_MOSI, 0, 31)>,
                 <NRF_PSEL(SPIM_MISO, 0, 17)>;
             low-power-enable;
+            bias-pull-up;
         };
     };
 };
@@ -32,15 +32,18 @@
 
     trackball: trackball@0 {
         status = "okay";
-        compatible = "pixart,pmw3610";
+        compatible = "pixart,pmw3610-alt";
         reg = <0>;
         spi-max-frequency = <2000000>;
         spi-cpol;
         spi-cpha;
-        motion-gpios = <&gpio0 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
-        res-cpi = <800>;
-        zephyr,axis-x = <INPUT_REL_X>;
-        zephyr,axis-y = <INPUT_REL_Y>;
+        irq-gpios = <&gpio0 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+        cpi = <800>;
+        evt-type = <INPUT_EV_REL>;
+        x-input-code = <INPUT_REL_X>;
+        y-input-code = <INPUT_REL_Y>;
+        swap-xy;
+        invert-x;
     };
 };
 
@@ -48,6 +51,5 @@
     trackball_listener {
         compatible = "zmk,input-listener";
         device = <&trackball>;
-        input-processors = <&zip_xy_transform (INPUT_TRANSFORM_XY_SWAP | INPUT_TRANSFORM_X_INVERT)>;
     };
 };
