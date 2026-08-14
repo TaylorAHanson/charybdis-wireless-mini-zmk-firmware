@@ -132,3 +132,18 @@ If you switch between the native driver and the `badjeff` driver, you **must** c
 | **Axis Transforms** | Handled via `<&zip_xy_transform>` on the `zmk,input-listener` node. | Handled via `swap-xy;` and `invert-x;` directly on the sensor node. |
 
 If you ever see a Kconfig error like `undefined symbol INPUT_PMW3610_INIT_PRIORITY`, it is because the specific Kconfig does not exist in the driver currently active in `west.yml`.
+
+## The `0x3F` Trailing Bit Corruption & 3-Wire Electrical Failures
+While using the `badjeff` driver and the physical 2.2kΩ resistor hack, we successfully bypassed the `ext-power` boot delay, but hit a catastrophic trailing-bit corruption where the sensor returned `0x3F` instead of the expected `0x3E` product ID.
+
+*   **The Physical Pin Discovery:** By swapping `MOSI` and `MISO` in the software, we proved that the physical sensor trace was routed to `P0.31`, not `P0.17`. When correctly mapped (`MOSI=17, MISO=31`), the sensor awoke from `0xFF` (dead bus) and started returning `0x7F` and `0x3F`.
+*   **The Diode Hack Failure:** We attempted to use a diode (Cathode on `MOSI`, Anode on `MISO`) to act as a 1-way valve. It failed completely (`0xFF`). The forward voltage drop of a standard silicon diode (~0.7V) combined with the pull-up resistor kept the `MOSI` command voltage just above the PMW3610's strict logic LOW threshold (0.3 * VDD = 0.99V). The sensor never registered the read command.
+*   **The Resistor Catch-22:** The 3-wire resistor hack on an NRF52840 is mathematically flawed for ultra-low-power sensors:
+    *   To send a command, the resistor must be **small enough (<4.2kΩ)** to pull down the sensor's internal 10kΩ pull-up below 0.99V.
+    *   To read a response, the resistor must be **large enough (>4.7kΩ)** so the weak PMW3610 (16µA) doesn't have to sink the NRF52's aggressive 3.3V push-pull drive current. (With a 2.2kΩ resistor, it must sink 1.5mA, causing the line to hover at 1.1V, which the NRF52 reads as a logic `1`).
+*   **The `tSRAD` Timing Violation:** Research revealed the PMW3610 requires a 20µs turnaround delay (`tSRAD`) between the address byte and the read byte. The `badjeff` driver uses a single, continuous `spi_transceive` burst, completely violating this delay and potentially causing the shift register to lag. (We dropped the SPI frequency to `125kHz` to force a wider turnaround gap, but the error persisted, proving timing alone wasn't the root cause).
+*   **The SPI Phase Skew (Mode 0 Test):** We hypothesized that SPI Mode 3 was causing the sensor to release the line prematurely. We tested Mode 0 (clock idles LOW, samples on RISING), but the error remained a rock-solid `0x3F`. This definitively proves that phase skew is not the root cause. The trailing bit corruption is entirely due to the `tSRAD` timing violation within the `badjeff` continuous `spi_transceive` burst.
+
+### The Ultimate Hardware Jumper Solution
+If the 3-wire hack fundamentally fails due to NRF52 push-pull hardware limitations, the ultimate solution is to bypass `ext-power` entirely. 
+By using tweezers to bridge **Pin 4 (VDD)** and **Pin 5 (EXT_VCC)** on the right side of the SuperMini, the sensor receives constant 3.3V power. This allows us to use the **official upstream Zephyr 4.1 driver**, which correctly implements software Half-Duplex dynamically, completely eliminating the need for the resistor hack and fixing all bit corruption.
