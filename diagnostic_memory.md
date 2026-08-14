@@ -109,6 +109,6 @@ Even with the `badjeff` alt driver successfully executing SPI transfers (avoidin
     *   `irq-gpios` must be changed to `motion-gpios`.
     *   `x-input-code` and `y-input-code` must be changed to `zephyr,axis-x` and `zephyr,axis-y`.
     *   `cpi` must be changed to `res-cpi`.
-    *   `swap-xy`, `invert-x`, and `invert-y` must be removed from the sensor node entirely. They are now handled by the ZMK input subsystem using `input-processors = <&zip_xy_transform (INPUT_TRANSFORM_XY_SWAP | INPUT_TRANSFORM_X_INVERT)>;` inside the `zmk,input-listener` node, which requires `#include <dt-bindings/zmk/input_transform.h>`.
+    *   `swap-xy`, `invert-x`, and `invert-y` must be removed from the sensor node entirely. They are now handled by the ZMK input subsystem using `input-processors = <&zip_xy_transform (INPUT_TRANSFORM_XY_SWAP | INPUT_TRANSFORM_X_INVERT)>;` inside the `zmk,input-listener` node, which requires `#include <dt-bindings/zmk/input_transform.h>` AND `#include <input/processors.dtsi>`.
     *   `evt-type` is no longer supported/required by the sensor node itself.
     *   The `CONFIG_PMW3610_ALT_INIT_POWER_UP_EXTRA_DELAY_MS` Kconfig option is invalid for the built-in driver.
