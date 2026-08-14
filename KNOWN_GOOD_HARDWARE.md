@@ -21,7 +21,7 @@ If you want to keep your SuperMini / nice!nano for its fantastic battery life an
 *   **Why it works natively:** The PMW3360 has physically separate `MOSI` and `MISO` pins. 
 *   **The Result:** You plug `MOSI` to `MOSI` and `MISO` to `MISO`. The Zephyr driver requires absolutely zero half-duplex flags, zero physical resistors, and zero `badjeff` modules. It initializes flawlessly on upstream Zephyr because it operates as a standard, full-duplex SPI device.
 *   **Where to buy:** Breakouts for the PMW3360 are widely available on Tindie, AliExpress, or through BastardKB and Tractyl projects. 
-*   **Trade-off:** The 3360 draws slightly more power than the 3610, but the stability and native support are well worth it.
+*   **Trade-off (CRITICAL):** Power Consumption. The PMW3360 is a high-performance gaming sensor, while the PMW3610 is a low-power laser sensor. The PMW3610 draws **~16–30 µA** in rest modes, allowing months of battery life. The PMW3360 draws **~23–60 mA** while operating (roughly 1,000x more power). On a standard 100mAh nice!nano battery, a PMW3360 will drain the battery in hours during continuous use. You will likely need a much larger battery (e.g., 500mAh+) to use a PMW3360 wirelessly.
 
 ---
 
