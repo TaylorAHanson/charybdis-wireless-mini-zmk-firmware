@@ -72,8 +72,7 @@ To safely run the `badjeff` driver on an NRF52840, we must physically isolate th
 2.  **The External Pull-Up (2.2kΩ):** A 2.2kΩ resistor must be connected between `3.3V` (VCC) and the sensor's `SDIO` line.
     *   *Why:* When the MCU tries to send a `1` bit during the address phase, it drives `MOSI` to 3.3V. The diode blocks this signal completely. The sensor relies entirely on a pull-up resistor to yank the `SDIO` line to 3.3V.
     *   *The Internal Pull-up Failure:* We attempted to use the NRF52's internal 13kΩ pull-up (`bias-pull-up`). However, 13kΩ is too weak to overcome wire capacitance fast enough for SPI clock speeds. The signal couldn't reach 3.3V before the clock ticked, corrupting the `1` bits into `0`s, which caused the sensor to timeout and flood the queue with `-1/-1` readings.
-    *   *The 125kHz Paradox:* We slowed the clock to `125kHz` to give the weak pull-up more time, but the PMW3610 has a strict `125kHz` timeout minimum! It abandoned the transaction mid-byte.
-    *   *Conclusion:* A physical 2.2kΩ external pull-up resistor is mandatory. It reduces the RC delay to ~100ns, allowing us to flawlessly run the SPI bus at its native `2MHz` speed.
+    *   *The 125kHz Paradox (PERMANENT RULE):* We slowed the clock to `125kHz` to give the weak pull-up more time. However, even with the 2.2kΩ resistor installed, **THE SPI CLOCK MUST REMAIN AT 125kHz FOREVER**. The `badjeff` driver uses a continuous `spi_transceive` burst which completely violates the sensor's required 20us `tSRAD` turnaround delay. If you increase the frequency above 125kHz, the NRF52 demands data faster than the sensor can fetch it, crashing the sensor and permanently silencing the IRQ pin. **NEVER CHANGE THIS VALUE.**
 
 ## 8. The `0x3F` Product ID Revelation
 Even with the diode perfectly isolating the sensor, the MCU read `0x3F` (`0011 1111`) instead of the expected `0x3E` (`0011 1110`).

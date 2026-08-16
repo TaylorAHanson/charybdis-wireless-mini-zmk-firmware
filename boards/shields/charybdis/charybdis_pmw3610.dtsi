@@ -32,6 +32,19 @@
         status = "okay";
         compatible = "pixart,pmw3610-alt";
         reg = <0>;
+        /* 
+         * =========================================================================
+         *  CRITICAL HARDWARE CONSTRAINT - DO NOT CHANGE THIS FREQUENCY
+         * =========================================================================
+         * The `badjeff` driver uses a continuous `spi_transceive` burst which 
+         * completely violates the sensor's required 20us `tSRAD` turnaround delay.
+         * If this frequency is increased above 125kHz, the NRF52 will demand data 
+         * faster than the sensor can fetch it, causing the sensor to crash and 
+         * permanently silence its IRQ pin.
+         * 
+         * LEAVE THIS AT 125000 INDEFINITELY.
+         * =========================================================================
+         */
         spi-max-frequency = <125000>;
         spi-cpol;
         spi-cpha;
