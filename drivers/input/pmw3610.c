@@ -498,18 +498,37 @@ static int pmw3610_report_data(const struct device *dev) {
     int64_t now = k_uptime_get();
 #endif
 
-	int err = pmw3610_read(dev, PMW3610_REG_MOTION_BURST, buf, PMW3610_BURST_SIZE);
+	// Wake up SPI clock
+	pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_ENABLE);
+	k_busy_wait(300);
+
+	// Read Motion Register first (this freezes delta registers)
+	int err = pmw3610_read_reg(dev, PMW3610_REG_MOTION, &buf[0]);
     if (err) {
         return err;
     }
-    // LOG_HEXDUMP_DBG(buf, PMW3610_BURST_SIZE, "buf");
+    
+    // Check if motion is actually present (bit 7)
+    if (!(buf[0] & 0x80)) {
+        // Stop SPI clock to save power
+        pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
+        return 0; // no movement
+    }
+
+    // Read remaining Delta registers sequentially
+    pmw3610_read_reg(dev, PMW3610_REG_DELTA_X_L, &buf[1]);
+    pmw3610_read_reg(dev, PMW3610_REG_DELTA_Y_L, &buf[2]);
+    pmw3610_read_reg(dev, PMW3610_REG_DELTA_XY_H, &buf[3]);
+
+    // Stop SPI clock to save power
+    pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
 
 // 12-bit two's complement value to int16_t
 // adapted from https://stackoverflow.com/questions/70802306/convert-a-12-bit-signed-number-in-c
 #define TOINT16(val, bits) (((struct { int16_t value : bits; }){val}).value)
 
-    int16_t x = TOINT16((buf[PMW3610_X_L_POS] + ((buf[PMW3610_XY_H_POS] & 0xF0) << 4)), 12);
-    int16_t y = TOINT16((buf[PMW3610_Y_L_POS] + ((buf[PMW3610_XY_H_POS] & 0x0F) << 8)), 12);
+    int16_t x = TOINT16((buf[1] + ((buf[3] & 0xF0) << 4)), 12);
+    int16_t y = TOINT16((buf[2] + ((buf[3] & 0x0F) << 8)), 12);
     LOG_INF("x/y: %d/%d", x, y);
 
 #ifdef CONFIG_PMW3610_ALT_SMART_ALGORITHM
