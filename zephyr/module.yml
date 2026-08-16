@@ -1,5 +1,6 @@
 name: charybdis
 build:
+  cmake: .
   kconfig: Kconfig
   settings:
     board_root: .
