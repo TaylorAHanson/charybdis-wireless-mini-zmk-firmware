@@ -528,8 +528,8 @@ static int pmw3610_report_data(const struct device *dev) {
     // Stop SPI clock to save power
     pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
 
-    uint16_t raw_x = buf[1] + ((buf[3] & 0xF0) << 4);
-    uint16_t raw_y = buf[2] + ((buf[3] & 0x0F) << 8);
+    uint16_t raw_x = buf[1] + ((buf[3] & 0x0F) << 8);
+    uint16_t raw_y = buf[2] + ((buf[3] & 0xF0) << 4);
     int16_t x = sign_extend_12(raw_x);
     int16_t y = sign_extend_12(raw_y);
     LOG_INF("x/y: %d/%d", x, y);
