@@ -639,6 +639,9 @@ static int pmw3610_init(const struct device *dev) {
     // Initialize Smart Polling tracker
     data->idle_frames = 0;
 
+    // init trigger handler work
+    k_work_init(&data->trigger_work, pmw3610_work_callback);
+
     // init diagnostic polling timer (started initially, will sleep automatically)
     k_timer_init(&data->poll_timer, pmw3610_timer_handler, NULL);
     k_timer_start(&data->poll_timer, K_MSEC(8), K_MSEC(8)); // poll every 8ms (125Hz)
