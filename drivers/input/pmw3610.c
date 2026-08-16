@@ -97,8 +97,8 @@ static int pmw3610_read(const struct device *dev, uint8_t addr, uint8_t *value, 
 	// Force SDIO as input with pull-up IMMEDIATELY so we don't fight the sensor!
 	gpio_pin_configure_dt(&cfg->sdio_gpio, GPIO_INPUT | GPIO_PULL_UP);
 
-	// Wait for tSRAD (150us) to give sensor time to fetch data, especially for motion burst!
-	k_busy_wait(150);
+	// Wait for tSRAD (20us) to give sensor time to fetch data
+	k_busy_wait(20);
 
 	// Read Data
 	for (int i = 0; i < len; i++) {
@@ -510,6 +510,8 @@ static int pmw3610_report_data(const struct device *dev) {
     
     // Check if motion is actually present (bit 7)
     if (!(buf[0] & 0x80)) {
+        // Stop SPI clock to save power
+        pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
         return 0; // no movement
     }
 
@@ -517,6 +519,9 @@ static int pmw3610_report_data(const struct device *dev) {
     pmw3610_read_reg(dev, PMW3610_REG_DELTA_X_L, &buf[1]);
     pmw3610_read_reg(dev, PMW3610_REG_DELTA_Y_L, &buf[2]);
     pmw3610_read_reg(dev, PMW3610_REG_DELTA_XY_H, &buf[3]);
+
+    // Stop SPI clock to save power
+    pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
 
 // 12-bit two's complement value to int16_t
 // adapted from https://stackoverflow.com/questions/70802306/convert-a-12-bit-signed-number-in-c
