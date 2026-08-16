@@ -59,14 +59,35 @@ static int (*const async_init_fn[ASYNC_INIT_STEP_COUNT])(const struct device *de
 
 static int pmw3610_read(const struct device *dev, uint8_t addr, uint8_t *value, uint8_t len) {
 	const struct pixart_config *cfg = dev->config;
+
+	// Create a local copy to manually inject SPI_HOLD_ON_CS
+	struct spi_dt_spec spi_cfg_copy = cfg->spi;
+	spi_cfg_copy.config.operation |= SPI_HOLD_ON_CS;
+
+	// 1. Write the address
 	const struct spi_buf tx_buf = { .buf = &addr, .len = sizeof(addr) };
 	const struct spi_buf_set tx = { .buffers = &tx_buf, .count = 1 };
-	struct spi_buf rx_buf[] = {
-		{ .buf = NULL, .len = sizeof(addr), },
-		{ .buf = value, .len = len, },
-	};
-	const struct spi_buf_set rx = { .buffers = rx_buf, .count = ARRAY_SIZE(rx_buf) };
-	return spi_transceive_dt(&cfg->spi, &tx, &rx);
+
+	int err = spi_write_dt(&spi_cfg_copy, &tx);
+	if (err) {
+		spi_release_dt(&spi_cfg_copy);
+		return err;
+	}
+
+	// 2. Wait for tSRAD (20 microseconds)
+	// This gives the PMW3610 time to fetch data from SRAM
+	k_busy_wait(20);
+
+	// 3. Read the data
+	struct spi_buf rx_buf = { .buf = value, .len = len };
+	const struct spi_buf_set rx = { .buffers = &rx_buf, .count = 1 };
+
+	err = spi_read_dt(&spi_cfg_copy, &rx);
+	
+	// 4. Always release Chip Select when done!
+	spi_release_dt(&spi_cfg_copy);
+
+	return err;
 }
 
 static int pmw3610_read_reg(const struct device *dev, uint8_t addr, uint8_t *value) {
@@ -686,10 +707,5 @@ static const struct sensor_driver_api pmw3610_driver_api = {
 DT_INST_FOREACH_STATUS_OKAY(PMW3610_DEFINE)
 
 
-#define GET_PMW3610_DEV(node_id) DEVICE_DT_GET(node_id),
-
-static const struct device *pmw3610_devs[] = {
-    DT_FOREACH_STATUS_OKAY(pixart_pmw3610, GET_PMW3610_DEV)
-};
 
 
