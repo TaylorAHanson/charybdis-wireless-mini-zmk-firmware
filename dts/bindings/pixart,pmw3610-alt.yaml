@@ -32,3 +32,6 @@ properties:
     type: boolean
   force-awake-4ms-mode:
     type: boolean
+  spi-half-duplex:
+    type: boolean
+    description: "Enable SPI half duplex mode"
