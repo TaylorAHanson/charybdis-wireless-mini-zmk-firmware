@@ -533,6 +533,14 @@ static int pmw3610_report_data(const struct device *dev) {
     // an 8-bit boundary (127 counts) allows for 26 inches-per-second of physical thumb movement, which is impossible to exceed.
     int16_t x = (int8_t)buf[1];
     int16_t y = (int8_t)buf[2];
+
+    // Apply exact mathematical inverse matrix to correct for Charybdis 45-degree sensor rotation
+    // This perfectly aligns the diagonal tracking to orthogonal up/down/left/right
+    int16_t rot_x = x + y;
+    int16_t rot_y = x - y;
+    x = rot_x;
+    y = rot_y;
+
     LOG_INF("x/y: %d/%d", x, y);
 
 #ifdef CONFIG_PMW3610_ALT_SMART_ALGORITHM
