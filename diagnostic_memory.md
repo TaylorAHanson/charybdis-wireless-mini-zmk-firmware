@@ -65,10 +65,15 @@ Initially, we attempted to isolate the 3-wire sensor using a resistor between th
 *   **Read Phase:** To successfully read a `0` from the sensor, the resistor must be **large enough (>4.7kΩ)** so the weak PMW3610 (which can only sink a tiny amount of current) doesn't get overpowered by the NRF52840's strong 3.3V Over-Read Character.
 *   **Conclusion:** There is no single resistor value that satisfies both conditions simultaneously on an NRF52840. The resistor hack is electrically unstable.
 
-### The True Solution: The Schottky Diode (1N5817)
-To safely run the `badjeff` driver on an NRF52840, a Schottky diode (e.g., 1N5817) with a ~0.2V drop must be used instead of a resistor.
-*   **Wiring:** The Silver Stripe (Cathode) must face the MCU's `MOSI` pin. The blank side (Anode) must face the sensor's `SDIO` line (which is physically connected to `MISO`).
-*   **How it works:** During a read phase, the MCU blasts a `0xFF` (3.3V) Over-Read Character. The diode becomes reverse-biased, perfectly blocking the 3.3V and physically disconnecting the MCU from the sensor. This provides the sensor an isolated, quiet environment to easily pull the `MISO` line down to 0V.
+### The True Solution: Diode Isolation + External Pull-Up (The 1N5817 + 2.2kΩ Hack)
+To safely run the `badjeff` driver on an NRF52840, we must physically isolate the `MOSI` and `MISO` lines using **both** a Schottky diode and a strong external pull-up resistor.
+1.  **The Diode (1N5817):** The Silver Stripe (Cathode) must face the MCU's `MOSI` pin. The blank side (Anode) must face the sensor's `SDIO` line (which is physically connected to `MISO`).
+    *   *Why:* During a read phase, the MCU blasts a `0xFF` (3.3V) Over-Read Character. The diode becomes reverse-biased, perfectly blocking the 3.3V and physically disconnecting the MCU from the sensor. This provides the sensor an isolated, quiet environment to easily pull the `MISO` line down to 0V.
+2.  **The External Pull-Up (2.2kΩ):** A 2.2kΩ resistor must be connected between `3.3V` (VCC) and the sensor's `SDIO` line.
+    *   *Why:* When the MCU tries to send a `1` bit during the address phase, it drives `MOSI` to 3.3V. The diode blocks this signal completely. The sensor relies entirely on a pull-up resistor to yank the `SDIO` line to 3.3V.
+    *   *The Internal Pull-up Failure:* We attempted to use the NRF52's internal 13kΩ pull-up (`bias-pull-up`). However, 13kΩ is too weak to overcome wire capacitance fast enough for SPI clock speeds. The signal couldn't reach 3.3V before the clock ticked, corrupting the `1` bits into `0`s, which caused the sensor to timeout and flood the queue with `-1/-1` readings.
+    *   *The 125kHz Paradox:* We slowed the clock to `125kHz` to give the weak pull-up more time, but the PMW3610 has a strict `125kHz` timeout minimum! It abandoned the transaction mid-byte.
+    *   *Conclusion:* A physical 2.2kΩ external pull-up resistor is mandatory. It reduces the RC delay to ~100ns, allowing us to flawlessly run the SPI bus at its native `2MHz` speed.
 
 ## 8. The `0x3F` Product ID Revelation
 Even with the diode perfectly isolating the sensor, the MCU read `0x3F` (`0011 1111`) instead of the expected `0x3E` (`0011 1110`).
