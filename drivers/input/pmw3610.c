@@ -432,7 +432,12 @@ static int pmw3610_report_data(const struct device *dev) {
         return -EBUSY;
     }
 
+    static int64_t dx = 0;
+    static int64_t dy = 0;
+
 #if CONFIG_PMW3610_ALT_REPORT_INTERVAL_MIN > 0
+    static int64_t last_smp_time = 0;
+    static int64_t last_rpt_time = 0;
     int64_t now = k_uptime_get();
 #endif
 
@@ -465,36 +470,36 @@ static int pmw3610_report_data(const struct device *dev) {
 
 #if CONFIG_PMW3610_ALT_REPORT_INTERVAL_MIN > 0
     // purge accumulated delta, if last sampled had not been reported on last report tick
-    if (now - data->last_smp_time >= CONFIG_PMW3610_ALT_REPORT_INTERVAL_MIN) {
-        data->dx = 0;
-        data->dy = 0;
+    if (now - last_smp_time >= CONFIG_PMW3610_ALT_REPORT_INTERVAL_MIN) {
+        dx = 0;
+        dy = 0;
     }
-    data->last_smp_time = now;
+    last_smp_time = now;
 #endif
 
     // accumulate delta until report in next iteration
-    data->dx += x;
-    data->dy += y;
+    dx += x;
+    dy += y;
 
 #if CONFIG_PMW3610_ALT_REPORT_INTERVAL_MIN > 0
     // strict to report inerval
-    if (now - data->last_rpt_time < CONFIG_PMW3610_ALT_REPORT_INTERVAL_MIN) {
+    if (now - last_rpt_time < CONFIG_PMW3610_ALT_REPORT_INTERVAL_MIN) {
         return 0;
     }
 #endif
 
     // fetch report value
-    int16_t rx = (int16_t)CLAMP(data->dx, INT16_MIN, INT16_MAX);
-    int16_t ry = (int16_t)CLAMP(data->dy, INT16_MIN, INT16_MAX);
+    int16_t rx = (int16_t)CLAMP(dx, INT16_MIN, INT16_MAX);
+    int16_t ry = (int16_t)CLAMP(dy, INT16_MIN, INT16_MAX);
     bool have_x = rx != 0;
     bool have_y = ry != 0;
 
     if (have_x || have_y) {
 #if CONFIG_PMW3610_ALT_REPORT_INTERVAL_MIN > 0
-        data->last_rpt_time = now;
+        last_rpt_time = now;
 #endif
-        data->dx = 0;
-        data->dy = 0;
+        dx = 0;
+        dy = 0;
         if (have_x) {
             input_report(dev, config->evt_type, config->x_input_code, rx, !have_y, K_NO_WAIT);
         }
@@ -562,12 +567,6 @@ static int pmw3610_init(const struct device *dev) {
 
     // init device pointer
     data->dev = dev;
-    data->dx = 0;
-    data->dy = 0;
-#if CONFIG_PMW3610_ALT_REPORT_INTERVAL_MIN > 0
-    data->last_smp_time = 0;
-    data->last_rpt_time = 0;
-#endif
 
     // init smart algorithm flag;
     data->sw_smart_flag = false;
@@ -691,7 +690,7 @@ DT_INST_FOREACH_STATUS_OKAY(PMW3610_DEFINE)
 #define GET_PMW3610_DEV(node_id) DEVICE_DT_GET(node_id),
 
 static const struct device *pmw3610_devs[] = {
-    DT_FOREACH_STATUS_OKAY(pixart_pmw3610_alt, GET_PMW3610_DEV)
+    DT_FOREACH_STATUS_OKAY(pixart_pmw3610, GET_PMW3610_DEV)
 };
 
 static int on_activity_state(const zmk_event_t *eh) {
