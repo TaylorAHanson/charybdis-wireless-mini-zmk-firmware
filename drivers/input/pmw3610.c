@@ -57,11 +57,10 @@ static int (*const async_init_fn[ASYNC_INIT_STEP_COUNT])(const struct device *de
 
 static void bitbang_write_byte(const struct pixart_config *config, uint8_t val) {
     for (int i = 7; i >= 0; i--) {
-        gpio_pin_set_dt(&config->sck_gpio, 0); // SCK LOW
+        gpio_pin_set_dt(&config->sdio_gpio, (val >> i) & 1); // Set MOSI FIRST (stable before falling edge)
+        gpio_pin_set_dt(&config->sck_gpio, 0); // SCK LOW (falling edge)
         k_busy_wait(1);
-        gpio_pin_set_dt(&config->sdio_gpio, (val >> i) & 1); // Set MOSI
-        k_busy_wait(1);
-        gpio_pin_set_dt(&config->sck_gpio, 1); // SCK HIGH
+        gpio_pin_set_dt(&config->sck_gpio, 1); // SCK HIGH (rising edge, sensor latches data)
         k_busy_wait(1);
     }
 }
@@ -73,7 +72,12 @@ static uint8_t bitbang_read_byte(const struct pixart_config *config) {
         k_busy_wait(1);
         gpio_pin_set_dt(&config->sck_gpio, 1); // SCK HIGH
         k_busy_wait(1);
-        val |= (gpio_pin_get_dt(&config->sdio_gpio) << i); // Master reads on rising edge
+        int bit = gpio_pin_get_dt(&config->sdio_gpio);
+        if (bit > 0) {
+            val |= (1 << i); // Master reads on rising edge
+        } else if (bit < 0) {
+            LOG_ERR("gpio_pin_get_dt failed: %d", bit);
+        }
     }
     return val;
 }
@@ -90,11 +94,11 @@ static int pmw3610_read(const struct device *dev, uint8_t addr, uint8_t *value, 
 	// Write Address
 	bitbang_write_byte(cfg, addr);
 
+	// Force SDIO as input with pull-up IMMEDIATELY so we don't fight the sensor!
+	gpio_pin_configure_dt(&cfg->sdio_gpio, GPIO_INPUT | GPIO_PULL_UP);
+
 	// Wait for tSRAD (20us) to give sensor time to fetch data
 	k_busy_wait(20);
-
-	// Force SDIO as input with pull-up so we don't float to 0xFF!
-	gpio_pin_configure_dt(&cfg->sdio_gpio, GPIO_INPUT | GPIO_PULL_UP);
 
 	// Read Data
 	for (int i = 0; i < len; i++) {
@@ -617,11 +621,9 @@ static int pmw3610_init(const struct device *dev) {
 		return -ENODEV;
 	}
 
-    gpio_pin_configure_dt(&config->cs_gpio, GPIO_OUTPUT);
-    gpio_pin_set_dt(&config->cs_gpio, 0); // CS is active low, 0 means inactive
+    gpio_pin_configure_dt(&config->cs_gpio, GPIO_OUTPUT_INACTIVE);
     
-    gpio_pin_configure_dt(&config->sck_gpio, GPIO_OUTPUT);
-    gpio_pin_set_dt(&config->sck_gpio, 1); // SPI Mode 3 requires SCK idle HIGH!
+    gpio_pin_configure_dt(&config->sck_gpio, GPIO_OUTPUT_ACTIVE); // SPI Mode 3 requires SCK idle HIGH!
     
     gpio_pin_configure_dt(&config->sdio_gpio, GPIO_INPUT | GPIO_PULL_UP); // Idle state is input with pull-up
 
