@@ -97,8 +97,8 @@ static int pmw3610_read(const struct device *dev, uint8_t addr, uint8_t *value, 
 	// Force SDIO as input with pull-up IMMEDIATELY so we don't fight the sensor!
 	gpio_pin_configure_dt(&cfg->sdio_gpio, GPIO_INPUT | GPIO_PULL_UP);
 
-	// Wait for tSRAD (20us) to give sensor time to fetch data
-	k_busy_wait(20);
+	// Wait for tSRAD (150us) to give sensor time to fetch data, especially for motion burst!
+	k_busy_wait(150);
 
 	// Read Data
 	for (int i = 0; i < len; i++) {
@@ -501,6 +501,10 @@ static int pmw3610_report_data(const struct device *dev) {
 	// Wake up SPI clock
 	pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_ENABLE);
 	k_busy_wait(300);
+
+	// Latch motion data into burst buffer (required by PixArt sensors)
+	pmw3610_write_reg(dev, PMW3610_REG_MOTION_BURST, 0x00);
+	k_busy_wait(20);
 
 	// Read Motion Burst (this reads all 7 bytes continuously without raising CS!)
 	int err = pmw3610_read(dev, PMW3610_REG_MOTION_BURST, buf, PMW3610_BURST_SIZE);
