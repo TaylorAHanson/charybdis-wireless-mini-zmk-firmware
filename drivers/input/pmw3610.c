@@ -55,39 +55,53 @@ static int (*const async_init_fn[ASYNC_INIT_STEP_COUNT])(const struct device *de
     [ASYNC_INIT_STEP_CONFIGURE] = pmw3610_async_init_configure,
 };
 
-//////// Function definitions //////////
+static void bitbang_write_byte(const struct pixart_config *config, uint8_t val) {
+    for (int i = 7; i >= 0; i--) {
+        gpio_pin_set_dt(&config->sck_gpio, 0); // SCK LOW
+        gpio_pin_set_dt(&config->sdio_gpio, (val >> i) & 1); // Set MOSI
+        // The NRF52 GPIO toggle takes ~150ns, well within the 2MHz max speed.
+        gpio_pin_set_dt(&config->sck_gpio, 1); // SCK HIGH
+    }
+}
+
+static uint8_t bitbang_read_byte(const struct pixart_config *config) {
+    uint8_t val = 0;
+    for (int i = 7; i >= 0; i--) {
+        gpio_pin_set_dt(&config->sck_gpio, 0); // SCK LOW
+        // Sensor writes data on falling edge
+        gpio_pin_set_dt(&config->sck_gpio, 1); // SCK HIGH
+        val |= (gpio_pin_get_dt(&config->sdio_gpio) << i); // Master reads on rising edge
+    }
+    return val;
+}
 
 static int pmw3610_read(const struct device *dev, uint8_t addr, uint8_t *value, uint8_t len) {
 	const struct pixart_config *cfg = dev->config;
 
-	// Create a local copy to manually inject SPI_HOLD_ON_CS
-	struct spi_dt_spec spi_cfg_copy = cfg->spi;
-	spi_cfg_copy.config.operation |= SPI_HOLD_ON_CS;
+	// Assert Chip Select (Active Low)
+	gpio_pin_set_dt(&cfg->cs_gpio, 1);
 
-	// 1. Write the address
-	const struct spi_buf tx_buf = { .buf = &addr, .len = sizeof(addr) };
-	const struct spi_buf_set tx = { .buffers = &tx_buf, .count = 1 };
+	// Force SDIO as output to write the address
+	gpio_pin_configure_dt(&cfg->sdio_gpio, GPIO_OUTPUT);
+	
+	// Write Address
+	bitbang_write_byte(cfg, addr);
 
-	int err = spi_write_dt(&spi_cfg_copy, &tx);
-	if (err) {
-		spi_release_dt(&spi_cfg_copy);
-		return err;
-	}
-
-	// 2. Wait for tSRAD (20 microseconds)
-	// This gives the PMW3610 time to fetch data from SRAM
+	// Wait for tSRAD (20us) to give sensor time to fetch data
 	k_busy_wait(20);
 
-	// 3. Read the data
-	struct spi_buf rx_buf = { .buf = value, .len = len };
-	const struct spi_buf_set rx = { .buffers = &rx_buf, .count = 1 };
+	// Force SDIO as input so we don't fight the sensor!
+	gpio_pin_configure_dt(&cfg->sdio_gpio, GPIO_INPUT);
 
-	err = spi_read_dt(&spi_cfg_copy, &rx);
-	
-	// 4. Always release Chip Select when done!
-	spi_release_dt(&spi_cfg_copy);
+	// Read Data
+	for (int i = 0; i < len; i++) {
+		value[i] = bitbang_read_byte(cfg);
+	}
 
-	return err;
+	// Release Chip Select
+	gpio_pin_set_dt(&cfg->cs_gpio, 0);
+
+	return 0;
 }
 
 static int pmw3610_read_reg(const struct device *dev, uint8_t addr, uint8_t *value) {
@@ -96,10 +110,23 @@ static int pmw3610_read_reg(const struct device *dev, uint8_t addr, uint8_t *val
 
 static int pmw3610_write_reg(const struct device *dev, uint8_t addr, uint8_t value) {
 	const struct pixart_config *cfg = dev->config;
-	uint8_t write_buf[] = {addr | SPI_WRITE_BIT, value};
-	const struct spi_buf tx_buf = { .buf = write_buf, .len = sizeof(write_buf), };
-	const struct spi_buf_set tx = { .buffers = &tx_buf, .count = 1, };
-	return spi_write_dt(&cfg->spi, &tx);
+
+	// Assert Chip Select (Active Low)
+	gpio_pin_set_dt(&cfg->cs_gpio, 1);
+
+	// Force SDIO as output
+	gpio_pin_configure_dt(&cfg->sdio_gpio, GPIO_OUTPUT);
+
+	// Write Address + SPI_WRITE_BIT
+	bitbang_write_byte(cfg, addr | SPI_WRITE_BIT);
+	
+	// Write Data
+	bitbang_write_byte(cfg, value);
+
+	// Release Chip Select
+	gpio_pin_set_dt(&cfg->cs_gpio, 0);
+
+	return 0;
 }
 
 static int pmw3610_write(const struct device *dev, uint8_t reg, uint8_t val) {
@@ -580,10 +607,14 @@ static int pmw3610_init(const struct device *dev) {
     const struct pixart_config *config = dev->config;
     int err;
 
-	if (!spi_is_ready_dt(&config->spi)) {
-		LOG_ERR("%s is not ready", config->spi.bus->name);
+	if (!gpio_is_ready_dt(&config->cs_gpio) || !gpio_is_ready_dt(&config->sck_gpio) || !gpio_is_ready_dt(&config->sdio_gpio)) {
+		LOG_ERR("SPI GPIOs not ready");
 		return -ENODEV;
 	}
+
+    gpio_pin_configure_dt(&config->cs_gpio, GPIO_OUTPUT_INACTIVE);
+    gpio_pin_configure_dt(&config->sck_gpio, GPIO_OUTPUT_INACTIVE);
+    gpio_pin_configure_dt(&config->sdio_gpio, GPIO_INPUT); // Idle state is input so we don't fight the sensor
 
     // init device pointer
     data->dev = dev;
@@ -683,13 +714,12 @@ static const struct sensor_driver_api pmw3610_driver_api = {
 // #endif // IS_ENABLED(CONFIG_PM_DEVICE)
 // PM_DEVICE_DT_INST_DEFINE(n, pmw3610_pm_action);
 
-#define PMW3610_SPI_MODE (SPI_OP_MODE_MASTER | SPI_WORD_SET(8) | SPI_MODE_CPOL | \
-                        SPI_MODE_CPHA | SPI_TRANSFER_MSB)
-
 #define PMW3610_DEFINE(n)                                                                          \
     static struct pixart_data data##n;                                                             \
     static const struct pixart_config config##n = {                                                \
-		.spi = SPI_DT_SPEC_INST_GET(n, PMW3610_SPI_MODE, 0),		                               \
+		.cs_gpio = GPIO_DT_SPEC_INST_GET(n, cs_gpios),                                             \
+		.sck_gpio = GPIO_DT_SPEC_INST_GET(n, sck_gpios),                                           \
+		.sdio_gpio = GPIO_DT_SPEC_INST_GET(n, sdio_gpios),                                         \
         .irq_gpio = GPIO_DT_SPEC_INST_GET(n, irq_gpios),                                           \
         .cpi = DT_PROP(DT_DRV_INST(n), cpi),                                                       \
         .swap_xy = DT_PROP(DT_DRV_INST(n), swap_xy),                                               \

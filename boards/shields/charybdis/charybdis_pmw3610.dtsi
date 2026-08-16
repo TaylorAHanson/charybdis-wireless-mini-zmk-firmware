@@ -1,35 +1,18 @@
 #include <zephyr/dt-bindings/input/input-event-codes.h>
 
 / {
-    spi_gpio: spi-gpio {
-        compatible = "zephyr,spi-bitbang";
+    trackball: trackball@0 {
         status = "okay";
-        #address-cells = <1>;
-        #size-cells = <0>;
-        clk-gpios = <&gpio0 8 GPIO_ACTIVE_HIGH>;
-        mosi-gpios = <&gpio0 17 GPIO_ACTIVE_HIGH>;
-        miso-gpios = <&gpio0 17 GPIO_ACTIVE_HIGH>;
+        compatible = "pixart,pmw3610-alt";
+        reg = <0>;
         cs-gpios = <&gpio0 20 GPIO_ACTIVE_LOW>;
-
-        trackball: trackball@0 {
-            status = "okay";
-            compatible = "pixart,pmw3610-alt";
-            reg = <0>;
-            /* 
-             * With software SPI, we manually honor tSRAD delay,
-             * and with direct wiring, there's no RC delay.
-             * So we can finally run at full 2MHz speed!
-             */
-            spi-max-frequency = <2000000>;
-            spi-half-duplex;
-            spi-cpol;
-            spi-cpha;
-            irq-gpios = <&gpio0 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
-            cpi = <600>;
-            evt-type = <INPUT_EV_REL>;
-            x-input-code = <INPUT_REL_X>;
-            y-input-code = <INPUT_REL_Y>;
-        };
+        sck-gpios = <&gpio0 8 GPIO_ACTIVE_HIGH>;
+        sdio-gpios = <&gpio0 17 GPIO_ACTIVE_HIGH>;
+        irq-gpios = <&gpio0 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+        cpi = <600>;
+        evt-type = <INPUT_EV_REL>;
+        x-input-code = <INPUT_REL_X>;
+        y-input-code = <INPUT_REL_Y>;
     };
 };
 
