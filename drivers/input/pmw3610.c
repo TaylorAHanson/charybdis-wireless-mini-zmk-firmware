@@ -57,8 +57,8 @@ static int (*const async_init_fn[ASYNC_INIT_STEP_COUNT])(const struct device *de
 
 static void bitbang_write_byte(const struct pixart_config *config, uint8_t val) {
     for (int i = 7; i >= 0; i--) {
-        gpio_pin_set_dt(&config->sdio_gpio, (val >> i) & 1); // Set MOSI FIRST (stable before falling edge)
         gpio_pin_set_dt(&config->sck_gpio, 0); // SCK LOW (falling edge)
+        gpio_pin_set_dt(&config->sdio_gpio, (val >> i) & 1); // Set MOSI while SCK is LOW
         k_busy_wait(1);
         gpio_pin_set_dt(&config->sck_gpio, 1); // SCK HIGH (rising edge, sensor latches data)
         k_busy_wait(1);
@@ -69,15 +69,15 @@ static uint8_t bitbang_read_byte(const struct pixart_config *config) {
     uint8_t val = 0;
     for (int i = 7; i >= 0; i--) {
         gpio_pin_set_dt(&config->sck_gpio, 0); // SCK LOW
-        k_busy_wait(1);
-        gpio_pin_set_dt(&config->sck_gpio, 1); // SCK HIGH
-        k_busy_wait(1);
-        int bit = gpio_pin_get_dt(&config->sdio_gpio);
+        k_busy_wait(1); // Wait for sensor to output data
+        int bit = gpio_pin_get_dt(&config->sdio_gpio); // Read data while SCK is LOW (stable)
         if (bit > 0) {
-            val |= (1 << i); // Master reads on rising edge
+            val |= (1 << i);
         } else if (bit < 0) {
             LOG_ERR("gpio_pin_get_dt failed: %d", bit);
         }
+        gpio_pin_set_dt(&config->sck_gpio, 1); // SCK HIGH
+        k_busy_wait(1);
     }
     return val;
 }
@@ -107,7 +107,7 @@ static int pmw3610_read(const struct device *dev, uint8_t addr, uint8_t *value, 
 
 	// Release Chip Select
 	gpio_pin_set_dt(&cfg->cs_gpio, 0);
-	k_busy_wait(10); // small delay after CS release
+	k_busy_wait(40); // delay after CS release to satisfy tSRR/tSRW (min 20us)
 
 	return 0;
 }
@@ -133,7 +133,7 @@ static int pmw3610_write_reg(const struct device *dev, uint8_t addr, uint8_t val
 
 	// Release Chip Select
 	gpio_pin_set_dt(&cfg->cs_gpio, 0);
-	k_busy_wait(10); // small delay after CS release
+	k_busy_wait(40); // delay after CS release to satisfy tSWR/tSWW (min 20us)
 
 	return 0;
 }
