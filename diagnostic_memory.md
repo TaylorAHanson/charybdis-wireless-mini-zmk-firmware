@@ -87,3 +87,8 @@ Because the remote `badjeff` driver strictly enforces the `0x3E` check, it kills
 4. We wired up `CMakeLists.txt` and `Kconfig` in the repository root to compile this custom driver.
 
 **Result:** The driver logs the `0x3F` error but ignores it, forcing initialization to complete and allowing the sensor to stream its X/Y motion data perfectly.
+
+## 10. Future Cleanup & Restoration (TODO)
+When the hardware is fully verified and stable, we must undo some of the aggressive software hacks that were required to get the driver to compile locally and bypass the hardware checks:
+1. **Restore ZMK Sleep Listener:** The local `pmw3610.c` driver had its `zmk_pmw3610_idle_sleeper` listener and `#include <zmk/keymap.h>` explicitly deleted to resolve local CMake include path errors. This must be restored or properly structured as a ZMK Extra Module, otherwise the trackball will remain powered on 24/7, severely draining the wireless battery.
+2. **Handle the `0x3F` ID Permanently:** If the sensor proves to be a perfectly healthy `0x3F` clone/revision, we should formally patch the driver to accept both `0x3E` and `0x3F` as valid IDs, rather than leaving the `return -EIO;` commented out permanently.
