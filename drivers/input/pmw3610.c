@@ -673,7 +673,7 @@ static int pmw3610_init(const struct device *dev) {
 
     // init diagnostic polling timer
     k_timer_init(&data->poll_timer, pmw3610_timer_handler, NULL);
-    k_timer_start(&data->poll_timer, K_MSEC(20), K_MSEC(20)); // poll every 20ms
+    k_timer_start(&data->poll_timer, K_MSEC(8), K_MSEC(8)); // poll every 8ms (125Hz)
 
     // init irq routine
     err = pmw3610_init_irq(dev);
