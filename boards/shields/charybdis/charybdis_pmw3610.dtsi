@@ -1,10 +1,9 @@
 #include <zephyr/dt-bindings/input/input-event-codes.h>
 
 / {
-    trackball: trackball@0 {
+    trackball: trackball {
         status = "okay";
         compatible = "pixart,pmw3610-alt";
-        reg = <0>;
         cs-gpios = <&gpio0 20 GPIO_ACTIVE_LOW>;
         sck-gpios = <&gpio0 8 GPIO_ACTIVE_HIGH>;
         sdio-gpios = <&gpio0 17 GPIO_ACTIVE_HIGH>;
