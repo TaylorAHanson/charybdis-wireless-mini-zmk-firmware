@@ -352,8 +352,8 @@ static int pmw3610_set_performance(const struct device *dev, bool enabled) {
 static int pmw3610_set_interrupt(const struct device *dev, const bool en) {
     const struct pixart_config *config = dev->config;
     int ret = gpio_pin_interrupt_configure_dt(&config->irq_gpio,
-                                              en ? GPIO_INT_LEVEL_ACTIVE : GPIO_INT_DISABLE);
-    if (ret < 0) {
+                                              en ? GPIO_INT_EDGE_TO_ACTIVE : GPIO_INT_DISABLE);
+    if (unlikely(ret < 0)) {
         LOG_ERR("can't set interrupt");
     }
     return ret;
@@ -472,6 +472,7 @@ static void pmw3610_async_init(struct k_work *work) {
             data->ready = true; // sensor is ready to work
             LOG_INF("PMW3610 initialized");
             pmw3610_set_interrupt(dev, true);
+            k_work_submit(&data->trigger_work); // manually trigger once to clear any pending motion
         } else {
             k_work_schedule(&data->init_work, K_MSEC(async_init_delay[data->async_init_step]));
         }
@@ -582,6 +583,11 @@ static void pmw3610_work_callback(struct k_work *work) {
     pmw3610_set_interrupt(dev, true);
 }
 
+static void pmw3610_timer_handler(struct k_timer *timer) {
+    struct pixart_data *data = CONTAINER_OF(timer, struct pixart_data, poll_timer);
+    k_work_submit(&data->trigger_work);
+}
+
 static int pmw3610_init_irq(const struct device *dev) {
     int err;
     struct pixart_data *data = dev->data;
@@ -635,6 +641,10 @@ static int pmw3610_init(const struct device *dev) {
 
     // init trigger handler work
     k_work_init(&data->trigger_work, pmw3610_work_callback);
+
+    // init diagnostic polling timer
+    k_timer_init(&data->poll_timer, pmw3610_timer_handler, NULL);
+    k_timer_start(&data->poll_timer, K_MSEC(20), K_MSEC(20)); // poll every 20ms
 
     // init irq routine
     err = pmw3610_init_irq(dev);
