@@ -23,6 +23,7 @@ struct pixart_data {
     struct gpio_callback         irq_gpio_cb; // motion pin irq callback
     struct k_work                trigger_work; // realtrigger job
     struct k_timer               poll_timer;   // diagnostic polling timer
+    uint8_t                      idle_frames;  // tracker for Smart Polling
 
     struct k_work_delayable      init_work; // the work structure for delayable init steps
     int                          async_init_step;

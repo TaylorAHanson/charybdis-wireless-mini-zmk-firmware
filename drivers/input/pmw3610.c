@@ -543,62 +543,14 @@ static int pmw3610_report_data(const struct device *dev) {
     x = rot_x;
     y = rot_y;
 
-    LOG_INF("x/y: %d/%d", x, y);
-
-#ifdef CONFIG_PMW3610_ALT_SMART_ALGORITHM
-    int16_t shutter = ((int16_t)(buf[PMW3610_SHUTTER_H_POS] & 0x01) << 8) 
-                    + buf[PMW3610_SHUTTER_L_POS];
-    if (data->sw_smart_flag && shutter < 45) {
-        pmw3610_write(dev, 0x32, 0x00);
-        data->sw_smart_flag = false;
+    if (x != 0) {
+        input_report_rel(dev, config->x_input_code, x, true, K_NO_WAIT);
     }
-    if (!data->sw_smart_flag && shutter > 45) {
-        pmw3610_write(dev, 0x32, 0x80);
-        data->sw_smart_flag = true;
-    }
-#endif
-
-#if CONFIG_PMW3610_ALT_REPORT_INTERVAL_MIN > 0
-    // purge accumulated delta, if last sampled had not been reported on last report tick
-    if (now - last_smp_time >= CONFIG_PMW3610_ALT_REPORT_INTERVAL_MIN) {
-        dx = 0;
-        dy = 0;
-    }
-    last_smp_time = now;
-#endif
-
-    // accumulate delta until report in next iteration
-    dx += x;
-    dy += y;
-
-#if CONFIG_PMW3610_ALT_REPORT_INTERVAL_MIN > 0
-    // strict to report inerval
-    if (now - last_rpt_time < CONFIG_PMW3610_ALT_REPORT_INTERVAL_MIN) {
-        return 0;
-    }
-#endif
-
-    // fetch report value
-    int16_t rx = (int16_t)CLAMP(dx, INT16_MIN, INT16_MAX);
-    int16_t ry = (int16_t)CLAMP(dy, INT16_MIN, INT16_MAX);
-    bool have_x = rx != 0;
-    bool have_y = ry != 0;
-
-    if (have_x || have_y) {
-#if CONFIG_PMW3610_ALT_REPORT_INTERVAL_MIN > 0
-        last_rpt_time = now;
-#endif
-        dx = 0;
-        dy = 0;
-        if (have_x) {
-            input_report(dev, config->evt_type, config->x_input_code, rx, !have_y, K_NO_WAIT);
-        }
-        if (have_y) {
-            input_report(dev, config->evt_type, config->y_input_code, ry, true, K_NO_WAIT);
-        }
+    if (y != 0) {
+        input_report_rel(dev, config->y_input_code, y, true, K_NO_WAIT);
     }
 
-    return err;
+    return 1; // Return 1 to indicate motion occurred
 }
 
 static void pmw3610_gpio_callback(const struct device *gpiob, struct gpio_callback *cb,
@@ -606,14 +558,29 @@ static void pmw3610_gpio_callback(const struct device *gpiob, struct gpio_callba
     struct pixart_data *data = CONTAINER_OF(cb, struct pixart_data, irq_gpio_cb);
     const struct device *dev = data->dev;
     pmw3610_set_interrupt(dev, false);
+    
+    // Reset idle frames and start the timer when physical motion wakes us up
+    data->idle_frames = 0;
+    k_timer_start(&data->poll_timer, K_MSEC(8), K_MSEC(8));
+    
     k_work_submit(&data->trigger_work);
 }
 
 static void pmw3610_work_callback(struct k_work *work) {
     struct pixart_data *data = CONTAINER_OF(work, struct pixart_data, trigger_work);
     const struct device *dev = data->dev;
-    pmw3610_report_data(dev);
+    int motion = pmw3610_report_data(dev);
     pmw3610_set_interrupt(dev, true);
+
+    // Smart Polling: stop the 125Hz timer after 5 consecutive empty frames (40ms)
+    if (motion == 0) {
+        data->idle_frames++;
+        if (data->idle_frames >= 5) {
+            k_timer_stop(&data->poll_timer);
+        }
+    } else if (motion == 1) {
+        data->idle_frames = 0;
+    }
 }
 
 static void pmw3610_timer_handler(struct k_timer *timer) {
@@ -669,13 +636,10 @@ static int pmw3610_init(const struct device *dev) {
     // init device pointer
     data->dev = dev;
 
-    // init smart algorithm flag;
-    data->sw_smart_flag = false;
+    // Initialize Smart Polling tracker
+    data->idle_frames = 0;
 
-    // init trigger handler work
-    k_work_init(&data->trigger_work, pmw3610_work_callback);
-
-    // init diagnostic polling timer
+    // init diagnostic polling timer (started initially, will sleep automatically)
     k_timer_init(&data->poll_timer, pmw3610_timer_handler, NULL);
     k_timer_start(&data->poll_timer, K_MSEC(8), K_MSEC(8)); // poll every 8ms (125Hz)
 
@@ -754,21 +718,32 @@ static const struct sensor_driver_api pmw3610_driver_api = {
     .attr_set = pmw3610_alt_attr_set,
 };
 
-// #if IS_ENABLED(CONFIG_PM_DEVICE)
-// static int pmw3610_pm_action(const struct device *dev, enum pm_device_action action) {
-//     switch (action) {
-//     case PM_DEVICE_ACTION_SUSPEND:
-//         return pmw3610_set_interrupt(dev, false);
-//     case PM_DEVICE_ACTION_RESUME:
-//         return pmw3610_set_interrupt(dev, true);
-//     default:
-//         return -ENOTSUP;
-//     }
-// }
-// #endif // IS_ENABLED(CONFIG_PM_DEVICE)
-// PM_DEVICE_DT_INST_DEFINE(n, pmw3610_pm_action);
+#if IS_ENABLED(CONFIG_PM_DEVICE)
+static int pmw3610_pm_action(const struct device *dev, enum pm_device_action action) {
+    switch (action) {
+    case PM_DEVICE_ACTION_SUSPEND:
+        pmw3610_set_interrupt(dev, false);
+        pmw3610_write_reg(dev, PMW3610_REG_SHUTDOWN, 0xB6); // Power down sensor
+        return 0;
+    case PM_DEVICE_ACTION_RESUME:
+        pmw3610_write_reg(dev, PMW3610_REG_POWER_UP_RESET, PMW3610_POWERUP_CMD_RESET); // Wake up
+        k_busy_wait(300);
+        pmw3610_set_interrupt(dev, true);
+        return 0;
+    default:
+        return -ENOTSUP;
+    }
+}
+#endif // IS_ENABLED(CONFIG_PM_DEVICE)
+
+#if IS_ENABLED(CONFIG_PM_DEVICE)
+#define PMW3610_PM_DEFINE(n) PM_DEVICE_DT_INST_DEFINE(n, pmw3610_pm_action);
+#else
+#define PMW3610_PM_DEFINE(n)
+#endif
 
 #define PMW3610_DEFINE(n)                                                                          \
+    PMW3610_PM_DEFINE(n)                                                                           \
     static struct pixart_data data##n;                                                             \
     static const struct pixart_config config##n = {                                                \
 		.cs_gpio = GPIO_DT_SPEC_INST_GET(n, cs_gpios),                                             \
@@ -785,11 +760,7 @@ static const struct sensor_driver_api pmw3610_driver_api = {
         .force_awake = DT_PROP(DT_DRV_INST(n), force_awake),                                       \
         .force_awake_4ms_mode = DT_PROP(DT_DRV_INST(n), force_awake_4ms_mode),                     \
     };                                                                                             \
-    DEVICE_DT_INST_DEFINE(n, pmw3610_init, NULL, &data##n, &config##n, POST_KERNEL,                \
-                          CONFIG_INPUT_PMW3610_INIT_PRIORITY, &pmw3610_driver_api);
+    DEVICE_DT_INST_DEFINE(n, pmw3610_init, PM_DEVICE_DT_INST_GET(n), &data##n, &config##n,             \
+                          POST_KERNEL, CONFIG_INPUT_PMW3610_INIT_PRIORITY, &pmw3610_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(PMW3610_DEFINE)
-
-
-
-
