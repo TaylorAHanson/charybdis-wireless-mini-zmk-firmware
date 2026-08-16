@@ -502,26 +502,19 @@ static int pmw3610_report_data(const struct device *dev) {
 	pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_ENABLE);
 	k_busy_wait(300);
 
-	// Read Motion Register first (this freezes delta registers)
-	int err = pmw3610_read_reg(dev, PMW3610_REG_MOTION, &buf[0]);
+	// Read Motion Burst (this reads all 7 bytes continuously without raising CS!)
+	int err = pmw3610_read(dev, PMW3610_REG_MOTION_BURST, buf, PMW3610_BURST_SIZE);
     if (err) {
         return err;
     }
     
-    // Check if motion is actually present (bit 7)
-    if (!(buf[0] & 0x80)) {
-        // Stop SPI clock to save power
-        pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
-        return 0; // no movement
-    }
-
-    // Read remaining Delta registers sequentially
-    pmw3610_read_reg(dev, PMW3610_REG_DELTA_X_L, &buf[1]);
-    pmw3610_read_reg(dev, PMW3610_REG_DELTA_Y_L, &buf[2]);
-    pmw3610_read_reg(dev, PMW3610_REG_DELTA_XY_H, &buf[3]);
-
     // Stop SPI clock to save power
     pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
+
+    // Check if motion is actually present (bit 7)
+    if (!(buf[0] & 0x80)) {
+        return 0; // no movement
+    }
 
 // 12-bit two's complement value to int16_t
 // adapted from https://stackoverflow.com/questions/70802306/convert-a-12-bit-signed-number-in-c
