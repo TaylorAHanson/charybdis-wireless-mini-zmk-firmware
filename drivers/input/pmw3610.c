@@ -58,9 +58,11 @@ static int (*const async_init_fn[ASYNC_INIT_STEP_COUNT])(const struct device *de
 static void bitbang_write_byte(const struct pixart_config *config, uint8_t val) {
     for (int i = 7; i >= 0; i--) {
         gpio_pin_set_dt(&config->sck_gpio, 0); // SCK LOW
+        k_busy_wait(1);
         gpio_pin_set_dt(&config->sdio_gpio, (val >> i) & 1); // Set MOSI
-        // The NRF52 GPIO toggle takes ~150ns, well within the 2MHz max speed.
+        k_busy_wait(1);
         gpio_pin_set_dt(&config->sck_gpio, 1); // SCK HIGH
+        k_busy_wait(1);
     }
 }
 
@@ -68,8 +70,9 @@ static uint8_t bitbang_read_byte(const struct pixart_config *config) {
     uint8_t val = 0;
     for (int i = 7; i >= 0; i--) {
         gpio_pin_set_dt(&config->sck_gpio, 0); // SCK LOW
-        // Sensor writes data on falling edge
+        k_busy_wait(1);
         gpio_pin_set_dt(&config->sck_gpio, 1); // SCK HIGH
+        k_busy_wait(1);
         val |= (gpio_pin_get_dt(&config->sdio_gpio) << i); // Master reads on rising edge
     }
     return val;
@@ -90,8 +93,8 @@ static int pmw3610_read(const struct device *dev, uint8_t addr, uint8_t *value, 
 	// Wait for tSRAD (20us) to give sensor time to fetch data
 	k_busy_wait(20);
 
-	// Force SDIO as input so we don't fight the sensor!
-	gpio_pin_configure_dt(&cfg->sdio_gpio, GPIO_INPUT);
+	// Force SDIO as input with pull-up so we don't float to 0xFF!
+	gpio_pin_configure_dt(&cfg->sdio_gpio, GPIO_INPUT | GPIO_PULL_UP);
 
 	// Read Data
 	for (int i = 0; i < len; i++) {
@@ -100,6 +103,7 @@ static int pmw3610_read(const struct device *dev, uint8_t addr, uint8_t *value, 
 
 	// Release Chip Select
 	gpio_pin_set_dt(&cfg->cs_gpio, 0);
+	k_busy_wait(10); // small delay after CS release
 
 	return 0;
 }
@@ -125,6 +129,7 @@ static int pmw3610_write_reg(const struct device *dev, uint8_t addr, uint8_t val
 
 	// Release Chip Select
 	gpio_pin_set_dt(&cfg->cs_gpio, 0);
+	k_busy_wait(10); // small delay after CS release
 
 	return 0;
 }
@@ -500,7 +505,7 @@ static int pmw3610_report_data(const struct device *dev) {
 
     int16_t x = TOINT16((buf[PMW3610_X_L_POS] + ((buf[PMW3610_XY_H_POS] & 0xF0) << 4)), 12);
     int16_t y = TOINT16((buf[PMW3610_Y_L_POS] + ((buf[PMW3610_XY_H_POS] & 0x0F) << 8)), 12);
-    LOG_DBG("x/y: %d/%d", x, y);
+    LOG_INF("x/y: %d/%d", x, y);
 
 #ifdef CONFIG_PMW3610_ALT_SMART_ALGORITHM
     int16_t shutter = ((int16_t)(buf[PMW3610_SHUTTER_H_POS] & 0x01) << 8) 
@@ -612,9 +617,13 @@ static int pmw3610_init(const struct device *dev) {
 		return -ENODEV;
 	}
 
-    gpio_pin_configure_dt(&config->cs_gpio, GPIO_OUTPUT_INACTIVE);
-    gpio_pin_configure_dt(&config->sck_gpio, GPIO_OUTPUT_INACTIVE);
-    gpio_pin_configure_dt(&config->sdio_gpio, GPIO_INPUT); // Idle state is input so we don't fight the sensor
+    gpio_pin_configure_dt(&config->cs_gpio, GPIO_OUTPUT);
+    gpio_pin_set_dt(&config->cs_gpio, 0); // CS is active low, 0 means inactive
+    
+    gpio_pin_configure_dt(&config->sck_gpio, GPIO_OUTPUT);
+    gpio_pin_set_dt(&config->sck_gpio, 1); // SPI Mode 3 requires SCK idle HIGH!
+    
+    gpio_pin_configure_dt(&config->sdio_gpio, GPIO_INPUT | GPIO_PULL_UP); // Idle state is input with pull-up
 
     // init device pointer
     data->dev = dev;
