@@ -39,6 +39,12 @@
         status = "okay";
         compatible = "pixart,pmw3610-alt";
         reg = <0>;
+        /* 
+         * The SPI clock must be exactly 125kHz!
+         * 1. The clock must be fast enough (>= 125kHz) to prevent the sensor's internal state machine from timing out.
+         * 2. The clock must be slow enough to allow the NRF52's weak internal 13k pull-up resistor to physically
+         *    drag the voltage to 3.3V (Logic 1) across the wire capacitance when the 1N5817 diode blocks MOSI.
+         */
         spi-max-frequency = <125000>;
         spi-cpol;
         spi-cpha;
