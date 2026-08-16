@@ -97,8 +97,12 @@ static int pmw3610_read(const struct device *dev, uint8_t addr, uint8_t *value, 
 	// Force SDIO as input with pull-up IMMEDIATELY so we don't fight the sensor!
 	gpio_pin_configure_dt(&cfg->sdio_gpio, GPIO_INPUT | GPIO_PULL_UP);
 
-	// Wait for tSRAD (20us) to give sensor time to fetch data
-	k_busy_wait(20);
+	// Wait for tSRAD (150us for motion burst, 20us otherwise)
+    if (addr == PMW3610_REG_MOTION_BURST) {
+	    k_busy_wait(150);
+    } else {
+        k_busy_wait(20);
+    }
 
 	// Read Data
 	for (int i = 0; i < len; i++) {
@@ -508,31 +512,29 @@ static int pmw3610_report_data(const struct device *dev) {
 	k_busy_wait(300);
 
 	// Read Motion Register first (this freezes delta registers until XY_H is read)
-	int err = pmw3610_read_reg(dev, PMW3610_REG_MOTION, &buf[0]);
+    // Latch motion data into burst buffer
+    pmw3610_write_reg(dev, PMW3610_REG_MOTION_BURST, 0x00);
+    k_busy_wait(20);
+
+    // Read all 7 bytes via burst read to avoid any data clearing race conditions
+    int err = pmw3610_read(dev, PMW3610_REG_MOTION_BURST, buf, PMW3610_BURST_SIZE);
     if (err) {
         return err;
     }
-    
-    // Check if motion is actually present (bit 7)
-    if (!(buf[0] & 0x80)) {
-        // Stop SPI clock to save power
-        pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
-        return 0; // no movement
-    }
-
-    // Read remaining Delta registers sequentially
-    pmw3610_read_reg(dev, PMW3610_REG_DELTA_X_L, &buf[1]);
-    pmw3610_read_reg(dev, PMW3610_REG_DELTA_Y_L, &buf[2]);
 
     // Stop SPI clock to save power
     pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
 
-    // When doing sequential reads, reading the LSB register clears the MSB register internally on the sensor!
-    // This causes small negative movements (-1) to lose their sign bits and become huge positive jumps (+255)!
-    // To solve this flawlessly, we treat the PMW3610 as an 8-bit sensor. At 125Hz polling and 600 CPI,
-    // an 8-bit boundary (127 counts) allows for 26 inches-per-second of physical thumb movement, which is impossible to exceed.
-    int16_t x = (int8_t)buf[1];
-    int16_t y = (int8_t)buf[2];
+    // Check if motion is actually present (bit 7 of Motion register)
+    if (!(buf[0] & 0x80)) {
+        return 0; // no movement
+    }
+
+    // Restore full 12-bit math since Burst Read captures all bytes perfectly!
+    uint16_t raw_x = buf[1] + ((buf[3] & 0xF0) << 4);
+    uint16_t raw_y = buf[2] + ((buf[3] & 0x0F) << 8);
+    int16_t x = sign_extend_12(raw_x);
+    int16_t y = sign_extend_12(raw_y);
 
     // Apply exact mathematical inverse matrix to correct for Charybdis 45-degree sensor rotation
     // This perfectly aligns the diagonal tracking to orthogonal up/down/left/right
