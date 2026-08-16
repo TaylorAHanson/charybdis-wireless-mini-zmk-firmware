@@ -479,6 +479,11 @@ static void pmw3610_async_init(struct k_work *work) {
     }
 }
 
+// Manually sign-extend the 12-bit values to 16-bit to avoid GCC bitfield bugs
+static inline int16_t sign_extend_12(uint16_t val) {
+    return (int16_t)((val & 0x0800) ? (val | 0xF000) : val);
+}
+
 static int pmw3610_report_data(const struct device *dev) {
     struct pixart_data *data = dev->data;
     const struct pixart_config *config = dev->config;
@@ -523,12 +528,10 @@ static int pmw3610_report_data(const struct device *dev) {
     // Stop SPI clock to save power
     pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
 
-// 12-bit two's complement value to int16_t
-// adapted from https://stackoverflow.com/questions/70802306/convert-a-12-bit-signed-number-in-c
-#define TOINT16(val, bits) (((struct { int16_t value : bits; }){val}).value)
-
-    int16_t x = TOINT16((buf[1] + ((buf[3] & 0x0F) << 8)), 12);
-    int16_t y = TOINT16((buf[2] + ((buf[3] & 0xF0) << 4)), 12);
+    uint16_t raw_x = buf[1] + ((buf[3] & 0xF0) << 4);
+    uint16_t raw_y = buf[2] + ((buf[3] & 0x0F) << 8);
+    int16_t x = sign_extend_12(raw_x);
+    int16_t y = sign_extend_12(raw_y);
     LOG_INF("x/y: %d/%d", x, y);
 
 #ifdef CONFIG_PMW3610_ALT_SMART_ALGORITHM
