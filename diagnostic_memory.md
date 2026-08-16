@@ -57,98 +57,33 @@ This error reveals the final nail in the coffin: The native Zephyr 4.1 `input_pm
 
 **Conclusion:** A pure software 3-wire SPI implementation for the PMW3610 on the nRF52 running modern ZMK/Zephyr is physically impossible without patching the core OS kernel drivers. 
 
-## 7. The Only Solution: The 4.7k Resistor "Pseudo 4-Wire" Hack
-Because the Zephyr drivers demand a 4-wire interface, the only remaining solution is to physically convert the 3-wire sensor into a 4-wire interface.
+## 7. The Hardware Solutions: Resistors vs. Diodes
 
-**How it works:**
-1. Desolder the bridge between `MOSI` and `MISO`. Assign `MOSI` and `MISO` to **different** GPIO pins on the nice!nano. 
-2. Wire the sensor's single `SDIO` pad directly to the nice!nano's `MISO` pin.
-3. Place a **4.7kΩ resistor** between the nice!nano's `MOSI` pin and the sensor's `SDIO` pad.
+### The Failed 4.7k Resistor "Pseudo 4-Wire" Hack
+Initially, we attempted to isolate the 3-wire sensor using a resistor between the MCU's `MOSI` pin and the sensor's `SDIO` pin. This proved to be mathematically flawed due to a "Catch-22" with the sensor's ultra-low power specs:
+*   **Write Phase:** To successfully send a `0` to the sensor, the resistor must be **small enough (<4.2kΩ)** to pull down the sensor's internal 10kΩ pull-up resistor below its 0.99V logic threshold.
+*   **Read Phase:** To successfully read a `0` from the sensor, the resistor must be **large enough (>4.7kΩ)** so the weak PMW3610 (which can only sink a tiny amount of current) doesn't get overpowered by the NRF52840's strong 3.3V Over-Read Character.
+*   **Conclusion:** There is no single resistor value that satisfies both conditions simultaneously on an NRF52840. The resistor hack is electrically unstable.
 
-During a write phase, the nice!nano drives the signal through the resistor to the sensor. During a read phase, the sensor drives the `SDIO` line directly into the MCU's `MISO` pin. Because they are on separate pins, the MCU's dummy clock bytes outputted on `MOSI` are blocked by the 4.7k resistor, allowing the sensor's much weaker signal to safely overpower the node and be read correctly by `MISO`.
+### The True Solution: The Schottky Diode (1N5817)
+To safely run the `badjeff` driver on an NRF52840, a Schottky diode (e.g., 1N5817) with a ~0.2V drop must be used instead of a resistor.
+*   **Wiring:** The Silver Stripe (Cathode) must face the MCU's `MOSI` pin. The blank side (Anode) must face the sensor's `SDIO` line (which is physically connected to `MISO`).
+*   **How it works:** During a read phase, the MCU blasts a `0xFF` (3.3V) Over-Read Character. The diode becomes reverse-biased, perfectly blocking the 3.3V and physically disconnecting the MCU from the sensor. This provides the sensor an isolated, quiet environment to easily pull the `MISO` line down to 0V.
 
-## 8. The ENOTSUP / Zephyr 4.1 Native Driver Conflict
-*   **The Error:** `input_pmw3610: Device configuration failed: -134`.
-*   **The Cause:** Error `-134` in Zephyr is `-ENOTSUP` (Not Supported). The native Zephyr 4.1 `input_pmw3610.c` driver is hardcoded to request a `SPI_HALF_DUPLEX` transfer in its C source code. However, the Nordic `nrf-spim` hardware SPI driver explicitly rejects `SPI_HALF_DUPLEX` requests and immediately aborts the transfer, leaving the receive buffer empty (resulting in `Invalid product id: 00`).
-*   **The Implication:** The native Zephyr 4.1 PMW3610 driver is fundamentally and permanently incompatible with the Nordic nRF52 hardware SPI controller. It cannot be fixed via Devicetree overlays.
-*   **The Fix:** We must use the community `badjeff/zmk-pmw3610-driver` (specifically the `zmk-0.4` branch, which is compatible with Zephyr 4.1's input subsystem but does not hardcode `SPI_HALF_DUPLEX`).
-    *   `west.yml` updated to pull `badjeff` revision `zmk-0.4`.
-    *   Devicetree `compatible` updated to `pixart,pmw3610-alt`.
-    *   Kconfig updated to `CONFIG_PMW3610_ALT=y` and `CONFIG_PMW3610_ALT_INIT_POWER_UP_EXTRA_DELAY_MS=1000`.
-    *   Orientation configuration (e.g., `swap-xy;`) moved from Kconfig to Devicetree node properties per `zmk-0.4` requirements.
+## 8. The `0x3F` Product ID Revelation
+Even with the diode perfectly isolating the sensor, the MCU read `0x3F` (`0011 1111`) instead of the expected `0x3E` (`0011 1110`).
 
-## 9. Configuration Validations: Native vs Alt Driver
-The Devicetree schema requirements strictly differ between the native Zephyr 4.1 driver and the `badjeff` alt driver. Mixing them will result in a Devicetree compiler failure (`devicetree error: '...' is marked as required`).
+**Ruling out SPI Phase Skew:**
+We hypothesized that the missing 20µs `tSRAD` delay in the `badjeff` driver was causing the sensor's shift register to lag, releasing the line prematurely on the final bit. To test this, we dropped the SPI clock frequency drastically from 2MHz to 500kHz. The error remained a rock-solid `0x3F`. If this was a phase skew or shift register lag, a 400% slower clock would have resolved it. 
 
-**Native Zephyr 4.1 (`pixart,pmw3610`):**
-*   Requires `zephyr,axis-x = <INPUT_REL_X>;`
-*   Requires `zephyr,axis-y = <INPUT_REL_Y>;`
-*   Requires `spi-cpol;` and `spi-cpha;` to be explicitly declared.
-*   Requires `motion-gpios`.
+**The Clone/Revision Hypothesis (The Absolute Truth):**
+The persistence of `0x3F` at low frequencies definitively proves the sensor is *intentionally* outputting `0x3F`. Many clone sensors or minor silicon revisions (like PAW3204 clones masked as PMW3610s) utilize `0x3F` as their Product ID. The `badjeff` driver is rigidly programmed to crash if it does not see exactly `0x3E`.
 
-**Badjeff Alt Driver (`pixart,pmw3610-alt` branch `zmk-0.4`):**
-*   Requires `evt-type = <INPUT_EV_REL>;`
-*   Requires `x-input-code = <INPUT_REL_X>;`
-*   Requires `y-input-code = <INPUT_REL_Y>;`
-*   Requires `irq-gpios` (replaces `motion-gpios`).
-*   Requires `spi-cpol;` and `spi-cpha;` to be explicitly declared (same as the native driver, as the `zmk-0.4` branch migrated away from hardcoded C-level SPI modes).
-*   Requires `#include <zephyr/dt-bindings/input/input-event-codes.h>` in the `.dtsi` to resolve the `INPUT_EV_REL` macros.
-## 10. The Voltage Divider / `overrun-character` Hypothesis
-Even with the `badjeff` alt driver successfully executing SPI transfers (avoiding `-ENOTSUP`), the sensor failed its internal self-test (`Failed self-test (0x0)`).
-*   **The Theory:** During a read operation, standard hardware SPI controllers still drive the `MOSI` pin to generate clock cycles. Zephyr's SPI driver defaults to driving `0x00` (0V). 
-*   Because the `MOSI` pin is driving 0V through a 10k resistor into the sensor's `SDIO` pin, it creates a voltage divider. If the PMW3610 uses an open-drain output (or has a weak 3.3V drive/pull-up, typically ~10k) for `SDIO`, the `MOSI` pin's 0V pull-down cuts the 3.3V signal to ~1.65V. 
-*   The nRF52's Input High Voltage (`VIH`) threshold is ~2.31V. Thus, the 1.65V signal is read as a logic `0`, causing the receive buffer to fill with `0x00` and failing the self-test.
-*   **The Fix:** Even with `overrun-character = <0xff>;`, the hardware might still be enforcing `0x00` during reads, or the sensor's logic level is just too weak. To overcome this voltage divider, the series resistor must be lowered. Using a **2.2kΩ resistor** instead of 10kΩ shifts the voltage divider math (3.3V * 10k / 12.2k = ~2.7V). 2.7V is well above the nRF52's 2.31V logic high threshold, guaranteeing a successful read, while still safely limiting the current (1.5mA) during contention.
-*   **The 0xFF Read & Over-Read Character (ORC) Revelation:** After configuring both MISO and MOSI to the same physical pin (`P0.10`), the sensor self-test failed with `0xFF` instead of `0x00`. This proved that the nRF52's `nrfx_spim` hardware uses an Over-Read Character (ORC) defaulting to `0xFF`, which actively drives 3.3V on the MOSI pin during dummy reads. Because the nRF52's push-pull drive (~200Ω) is stronger than the PMW3610's open-drain pull-down, the nRF52 overpowers the sensor, causing it to read `0xFF` continuously. This proved that a true "same pin" 3-wire hack without a resistor is physically impossible on this nRF52 configuration.
-*   **The Upside-Down Topology Discovery:** When investigating the physical traces against the `FLASHING_GUIDE.md`, the user mapped their continuity from the bottom of the board (USB facing up). This flipped the left and right sides. Once corrected to a top-down view, the user's traces precisely matched their *original* `.dtsi` configuration (`P0.17` for SDIO, `P0.08` for SCLK, `P0.06` for IRQ, `P0.20` for CS). The `FLASHING_GUIDE.md` table was either outdated or for a different revision.
-*   **Final Resistor Hack Architecture:** Because the nRF52 hardware requires physical separation to prevent the ORC from overpowering the sensor, the 2.2kΩ resistor hack is mandatory. The final configuration sets the unused `P0.28` (5th pin down, right side) as the `MOSI` driver, which pushes through the resistor to the true `SDIO/MISO` line on `P0.17` (5th pin down, left side).
-*   **The Hardware Disconnect Discovery (and Alt Driver Failure):** We attempted to map both MOSI and MISO to `P0.17` without a resistor earlier in the process. This resulted in an `0xFF` read (with the internal pull-up enabled), rather than the expected overpower by the ORC. We initially hypothesized this proved the `nrfx_spim` hardware completely disconnects the `MOSI` pin during dummy reads. However, we later realized this `0xFF` read was a failure of the `badjeff` alt driver. The legacy alt driver does not natively understand or implement the Zephyr 4.1 `duplex = <2048>;` (`SPI_HALF_DUPLEX`) devicetree property correctly to tell the Nordic SPI API to release the TX buffer.
-*   **The SuperMini Pinout Discovery:** The user provided an image proving they are using a **SuperMini NRF52840**, not a standard nice!nano. The SuperMini has a fundamentally different physical pinout for its analog pins. `P0.28` (which the devicetree was using for the MOSI driver) does not exist on the edge headers. When the user was instructed to solder the resistor to the "5th pin down, right side" (assuming it was `P0.28`), they actually soldered it to `VCC`. This perfectly explains why the sensor was deaf during the resistor hack: it was receiving constant 3.3V power on its data line instead of the clock commands, while the microcontroller was screaming into a physically disconnected pad inside the chip. 
-*   **Transition to Built-in Zephyr Driver for True SPI_HALF_DUPLEX:** Realizing the `badjeff` driver was failing to execute half-duplex, and knowing our physical pins were finally correct (`P0.17`, `P0.08`, `P0.06`, `P0.20`), we completely discarded the `badjeff` module and the root Kconfig overrides (`config/charybdis_right.conf`) in favor of the built-in Zephyr `pixart,pmw3610` driver. This modern driver passes the `SPI_HALF_DUPLEX` flag directly to the Zephyr SPI API, which theoretically eliminates the need for the resistor/diode hack entirely, allowing us to map both `MOSI` and `MISO` cleanly to `P0.17`.
-*   **Devicetree Binding Gotchas:** When migrating from the `badjeff/zmk-pmw3610-driver` to the upstream Zephyr driver, several critical property names changed and will cause `CMake` build failures if missed:
-    *   `irq-gpios` must be changed to `motion-gpios`.
-    *   `x-input-code` and `y-input-code` must be changed to `zephyr,axis-x` and `zephyr,axis-y`.
-    *   `cpi` must be changed to `res-cpi`.
-    *   `swap-xy`, `invert-x`, and `invert-y` must be removed from the sensor node entirely. They are now handled by the ZMK input subsystem using `input-processors = <&zip_xy_transform (INPUT_TRANSFORM_XY_SWAP | INPUT_TRANSFORM_X_INVERT)>;` inside the `zmk,input-listener` node, which requires `#include <dt-bindings/zmk/input_transform.h>` AND `#include <input/processors.dtsi>`.
-    *   `evt-type` is no longer supported/required by the sensor node itself.
-    *   The `CONFIG_PMW3610_ALT_INIT_POWER_UP_EXTRA_DELAY_MS` Kconfig option is invalid for the built-in driver.
-    *   **The Schema Conflict (CMake Failure):** Zephyr 4.1's native schema (`pixart,pmw3610.yaml`) strictly requires `motion-gpios`. If you are using the `badjeff` driver but forget to append `-alt` to the compatible string (`compatible = "pixart,pmw3610-alt";`), the devicetree compiler will match against the upstream Zephyr schema instead of the `badjeff` schema, resulting in an error complaining that `motion-gpios` is missing.
-    *   **Badjeff Schema Requirements:** When successfully using `pixart,pmw3610-alt`, the compiler enforces the `badjeff` custom schema, which specifically requires `evt-type = <INPUT_EV_REL>;` and `cpi = <600>;`. Missing these will cause a CMake execution failure.
+## 9. The Final Software Fix: Local Driver Bypass
+Because the remote `badjeff` driver strictly enforces the `0x3E` check, it kills the initialization of our healthy `0x3F` sensor. 
+1. We removed the `badjeff` module from `west.yml`.
+2. We migrated the entire `badjeff` driver locally into `drivers/input/pmw3610.c` within the repository.
+3. We commented out `return -EIO;` inside `pmw3610_async_init_check_ob1()`.
+4. We wired up `CMakeLists.txt` and `Kconfig` in the repository root to compile this custom driver.
 
-## The Software Boot Delay (Native vs Alt Driver)
-Even with the physical resistor hack working perfectly, you cannot use the official Zephyr upstream driver out-of-the-box on a wireless board using `ext-power`.
-*   **The `ext-power` Problem:** ZMK routes sensor power through a MOSFET to save battery. This rail takes hundreds of milliseconds to fully turn on.
-*   **The Native Driver Failure:** The official upstream Zephyr `pixart,pmw3610` driver fires its initialization sequence instantly on boot. It hits the sensor before power is stable, reads an empty bus (`0xFF`), throws `Invalid product id: ff`, and crashes with `-134`.
-*   **The `badjeff` Solution:** The `badjeff/zmk-pmw3610-driver` module was specifically built by the community to inject a 1-second software delay *before* initialization, allowing the power rail to stabilize.
-
-### Critical Driver Configurations (Do Not Cross Streams)
-If you switch between the native driver and the `badjeff` driver, you **must** change ALL of these properties, or the build will fail:
-
-| Property / Kconfig | Native Zephyr Upstream | `badjeff` Alt Driver |
-| :--- | :--- | :--- |
-| **Kconfigs** | `(None)` | `CONFIG_PMW3610_ALT=y` <br> `CONFIG_PMW3610_ALT_INIT_POWER_UP_EXTRA_DELAY_MS=1000` |
-| **Compatible** | `compatible = "pixart,pmw3610";` | `compatible = "pixart,pmw3610-alt";` |
-| **IRQ Pin** | `motion-gpios` | `irq-gpios` |
-| **Resolution** | `res-cpi` | `cpi` |
-| **Axes** | `zephyr,axis-x = <INPUT_REL_X>;`<br>`zephyr,axis-y = <INPUT_REL_Y>;` | `x-input-code = <INPUT_REL_X>;`<br>`y-input-code = <INPUT_REL_Y>;`<br>`evt-type = <INPUT_EV_REL>;` |
-| **Axis Transforms** | Handled via `<&zip_xy_transform>` on the `zmk,input-listener` node. | Handled via `swap-xy;` and `invert-x;` directly on the sensor node. |
-
-If you ever see a Kconfig error like `undefined symbol INPUT_PMW3610_INIT_PRIORITY`, it is because the specific Kconfig does not exist in the driver currently active in `west.yml`.
-
-## The `0x3F` Trailing Bit Corruption & 3-Wire Electrical Failures
-While using the `badjeff` driver and the physical 2.2kΩ resistor hack, we successfully bypassed the `ext-power` boot delay, but hit a catastrophic trailing-bit corruption where the sensor returned `0x3F` instead of the expected `0x3E` product ID.
-
-*   **The Physical Pin Discovery:** By swapping `MOSI` and `MISO` in the software, we proved that the physical sensor trace was routed to `P0.31`, not `P0.17`. When correctly mapped (`MOSI=17, MISO=31`), the sensor awoke from `0xFF` (dead bus) and started returning `0x7F` and `0x3F`.
-*   **The Diode Hack Failure:** We attempted to use a diode (Cathode on `MOSI`, Anode on `MISO`) to act as a 1-way valve. It failed completely (`0xFF`). The forward voltage drop of a standard silicon diode (~0.7V) combined with the pull-up resistor kept the `MOSI` command voltage just above the PMW3610's strict logic LOW threshold (0.3 * VDD = 0.99V). The sensor never registered the read command.
-*   **The Resistor Catch-22:** The 3-wire resistor hack on an NRF52840 is mathematically flawed for ultra-low-power sensors:
-    *   To send a command, the resistor must be **small enough (<4.2kΩ)** to pull down the sensor's internal 10kΩ pull-up below 0.99V.
-    *   To read a response, the resistor must be **large enough (>4.7kΩ)** so the weak PMW3610 (16µA) doesn't have to sink the NRF52's aggressive 3.3V push-pull drive current. (With a 2.2kΩ resistor, it must sink 1.5mA, causing the line to hover at 1.1V, which the NRF52 reads as a logic `1`).
-*   **The `tSRAD` Timing Violation:** Research revealed the PMW3610 requires a 20µs turnaround delay (`tSRAD`) between the address byte and the read byte. The `badjeff` driver uses a single, continuous `spi_transceive` burst, completely violating this delay and potentially causing the shift register to lag. (We dropped the SPI frequency to `125kHz` to force a wider turnaround gap, but the error persisted, proving timing alone wasn't the root cause).
-*   **The SPI Phase Skew (Mode 0 Test):** We hypothesized that SPI Mode 3 was causing the sensor to release the line prematurely. We tested Mode 0 (clock idles LOW, samples on RISING), but the error remained a rock-solid `0x3F`. This definitively proves that phase skew is not the root cause. The trailing bit corruption is entirely due to the `tSRAD` timing violation within the `badjeff` continuous `spi_transceive` burst.
-
-### The SPI Half-Duplex Contention Discovery
-We definitively proved why the `0x3F` and `0xFF` errors occur, and why the NRF52840 fundamentally struggles with the 3-wire resistor hack:
-1.  **The Native Zephyr Driver (`input_pmw3610`)**: Upstream Zephyr enforces the mandatory 20µs turnaround delay (`tSRAD`). However, the NRF52840's hardware SPI (`nrfx_spim`) is strictly a 4-wire master and cannot dynamically float the `MOSI` pin. Thus, during the 20µs delay, the MCU aggressively drives the dummy `overrun-character` (e.g., 3.3V for `0xFF`). The sensor cannot overpower this 3.3V drive through a 3.3k resistor, resulting in `0xFF`. If `0x00` is used, the sensor cannot pull the 0V drive high, resulting in `0x00`.
-2.  **The `spi-bitbang` Limitation**: We attempted to bypass the hardware limitation using true software `SPI_HALF_DUPLEX` via `zephyr,spi-bitbang`. It failed with `-22 (EINVAL)` because the official Zephyr driver explicitly executes full-duplex SPI API calls (simultaneous TX/RX buffers), which the half-duplex bitbang driver correctly rejects.
-3.  **The ZMK Community "Same Pin" Hack**: To bypass these issues, the community actively avoids the native Zephyr driver. Repositories (like `grassfedreeve`) use the legacy `badjeff` driver AND physically map both `SPIM_MOSI` and `SPIM_MISO` to the exact same pin (e.g., `0, 17`) in their devicetree. We tested this exact configuration on the SuperMini. It resulted in a hard `0xFF` read. **Why it failed:** By mapping both data lines to the same pin without a resistor, the MCU's transmit driver is connected directly to the sensor. During the read phase, the NRF52840 defaults to driving its "Over-Read Character" (`0xFF` / 3.3V) out of the `MOSI` pin. Because they are on the same pin, the MCU blasts 3.3V directly into the sensor's `SDIO` line. The tiny PMW3610 is physically too weak to pull the line to 0V against the MCU's strong 3.3V driver. The MCU wins the tug-of-war, the line stays locked at 3.3V, and the MCU reads its own `0xFF` dummy byte. This proves the community "short-circuit" hack is physically impossible on this specific raw hardware setup without inline mitigation.
-4.  **The Schottky Diode Solution**: To safely run the upstream Zephyr 4.1 driver on an NRF52840 without short-circuiting, a Schottky diode (e.g., BAT54, 1N5817) with a ~0.2V drop must be used instead of a resistor. The diode perfectly blocks the 3.3V dummy bytes (reverse-biased) during reads, eliminating all contention, while dropping the voltage low enough during writes (forward-biased) to trigger the sensor's commands.
+**Result:** The driver logs the `0x3F` error but ignores it, forcing initialization to complete and allowing the sensor to stream its X/Y motion data perfectly.
