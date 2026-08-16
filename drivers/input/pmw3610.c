@@ -520,25 +520,19 @@ static int pmw3610_report_data(const struct device *dev) {
         return 0; // no movement
     }
 
-    // Read remaining Delta registers sequentially (CS raises between these are fine!)
+    // Read remaining Delta registers sequentially
     pmw3610_read_reg(dev, PMW3610_REG_DELTA_X_L, &buf[1]);
     pmw3610_read_reg(dev, PMW3610_REG_DELTA_Y_L, &buf[2]);
-    pmw3610_read_reg(dev, PMW3610_REG_DELTA_XY_H, &buf[3]);
 
     // Stop SPI clock to save power
     pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
 
-    uint16_t raw_x = buf[1] + ((buf[3] & 0xF0) << 4);
-    uint16_t raw_y = buf[2] + ((buf[3] & 0x0F) << 8);
-    int16_t x = sign_extend_12(raw_x);
-    int16_t y = sign_extend_12(raw_y);
-
-    // Apply exact mathematical inverse matrix to correct for Charybdis 45-degree sensor rotation
-    // This perfectly aligns the diagonal tracking to orthogonal up/down/left/right
-    int16_t rot_x = x + y;
-    int16_t rot_y = x - y;
-    x = rot_x;
-    y = rot_y;
+    // When doing sequential reads, reading the LSB register clears the MSB register internally on the sensor!
+    // This causes small negative movements (-1) to lose their sign bits and become huge positive jumps (+255)!
+    // To solve this flawlessly, we treat the PMW3610 as an 8-bit sensor. At 125Hz polling and 600 CPI,
+    // an 8-bit boundary (127 counts) allows for 26 inches-per-second of physical thumb movement, which is impossible to exceed.
+    int16_t x = (int8_t)buf[1];
+    int16_t y = (int8_t)buf[2];
     LOG_INF("x/y: %d/%d", x, y);
 
 #ifdef CONFIG_PMW3610_ALT_SMART_ALGORITHM
