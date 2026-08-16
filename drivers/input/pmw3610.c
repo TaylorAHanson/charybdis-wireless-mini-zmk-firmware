@@ -59,9 +59,9 @@ static void bitbang_write_byte(const struct pixart_config *config, uint8_t val) 
     for (int i = 7; i >= 0; i--) {
         gpio_pin_set_dt(&config->sck_gpio, 0); // SCK LOW (falling edge)
         gpio_pin_set_dt(&config->sdio_gpio, (val >> i) & 1); // Set MOSI while SCK is LOW
-        k_busy_wait(1);
+        k_busy_wait(5);
         gpio_pin_set_dt(&config->sck_gpio, 1); // SCK HIGH (rising edge, sensor latches data)
-        k_busy_wait(1);
+        k_busy_wait(5);
     }
 }
 
@@ -69,7 +69,7 @@ static uint8_t bitbang_read_byte(const struct pixart_config *config) {
     uint8_t val = 0;
     for (int i = 7; i >= 0; i--) {
         gpio_pin_set_dt(&config->sck_gpio, 0); // SCK LOW
-        k_busy_wait(1); // Wait for sensor to output data
+        k_busy_wait(5); // Wait for sensor to output data
         int bit = gpio_pin_get_dt(&config->sdio_gpio); // Read data while SCK is LOW (stable)
         if (bit > 0) {
             val |= (1 << i);
@@ -77,7 +77,7 @@ static uint8_t bitbang_read_byte(const struct pixart_config *config) {
             LOG_ERR("gpio_pin_get_dt failed: %d", bit);
         }
         gpio_pin_set_dt(&config->sck_gpio, 1); // SCK HIGH
-        k_busy_wait(1);
+        k_busy_wait(5);
     }
     return val;
 }
