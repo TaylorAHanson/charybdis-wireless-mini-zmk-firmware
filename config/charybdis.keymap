@@ -5,6 +5,12 @@
 #include "behaviors.dtsi"
 #include "combos.dtsi"
 
+&msc {
+    delay-ms = <0>;
+    time-to-max-speed-ms = <300>;
+    acceleration-exponent = <1>;
+};
+
 / {
     // ╭──────┬──────┬──────┬──────┬──────┬──────╮  ╭──────┬──────┬──────┬──────┬──────┬──────╮
     //    00     01     02     03    04      05        06     07     08     09     10     11
