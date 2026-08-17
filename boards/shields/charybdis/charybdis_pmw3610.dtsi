@@ -9,7 +9,7 @@
         sck-gpios = <&gpio0 8 GPIO_ACTIVE_HIGH>;
         sdio-gpios = <&gpio0 17 GPIO_ACTIVE_HIGH>;
         irq-gpios = <&gpio0 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
-        cpi = <1600>;
+        cpi = <600>;
         force-awake;
         evt-type = <INPUT_EV_REL>;
         x-input-code = <INPUT_REL_X>;
@@ -21,6 +21,5 @@
     trackball_listener {
         compatible = "zmk,input-listener";
         device = <&trackball>;
-        input-processors = <&zip_xy_scaler 1 3>;
     };
 };
