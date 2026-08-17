@@ -22,12 +22,22 @@ if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-# 2. Get latest run
-Write-Host "--> Checking latest GitHub Actions run on 'main'..." -ForegroundColor Yellow
-$runId = (gh run list --branch main --limit 1 --json databaseId --jq '.[0].databaseId')
+# 2. Get latest run for current commit
+$currentCommit = (git rev-parse HEAD).Trim()
+Write-Host "--> Finding GitHub Actions run for commit $currentCommit..." -ForegroundColor Yellow
+
+$runId = ""
+$retries = 0
+while (-not $runId -and $retries -lt 30) {
+    $runId = (gh run list --commit $currentCommit --limit 1 --json databaseId --jq '.[0].databaseId')
+    if (-not $runId) {
+        Start-Sleep -Seconds 2
+        $retries++
+    }
+}
 
 if (-not $runId) {
-    Write-Error "No GitHub Actions runs found on branch 'main'."
+    Write-Error "No GitHub Actions runs found for commit $currentCommit."
     exit 1
 }
 
