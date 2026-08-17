@@ -537,6 +537,13 @@ static int pmw3610_report_data(const struct device *dev) {
     int16_t x = sign_extend_12(raw_x);
     int16_t y = sign_extend_12(raw_y);
 
+    // Apply exact mathematical inverse matrix to correct for Charybdis 45-degree sensor rotation
+    // This perfectly aligns the diagonal tracking to orthogonal up/down/left/right
+    int16_t rot_x = x + y;
+    int16_t rot_y = x - y;
+    x = rot_x;
+    y = rot_y;
+
     bool have_x = x != 0;
     bool have_y = y != 0;
 
