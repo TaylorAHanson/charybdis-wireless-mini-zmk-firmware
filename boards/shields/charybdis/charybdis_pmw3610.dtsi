@@ -1,5 +1,4 @@
 #include <zephyr/dt-bindings/input/input-event-codes.h>
-#include <input/processors.dtsi>
 
 / {
     trackball: trackball {
@@ -14,12 +13,5 @@
         evt-type = <INPUT_EV_REL>;
         x-input-code = <INPUT_REL_X>;
         y-input-code = <INPUT_REL_Y>;
-    };
-};
-
-/ {
-    trackball_listener {
-        compatible = "zmk,input-listener";
-        device = <&trackball>;
     };
 };
