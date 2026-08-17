@@ -578,21 +578,7 @@ static void pmw3610_gpio_callback(const struct device *gpiob, struct gpio_callba
 static void pmw3610_work_callback(struct k_work *work) {
     struct pixart_data *data = CONTAINER_OF(work, struct pixart_data, trigger_work);
     const struct device *dev = data->dev;
-    int motion = pmw3610_report_data(dev);
-
-    // Smart Polling: stop the 125Hz timer after 1 second of NO motion (125 frames)
-    if (motion == 0) {
-        if (data->idle_frames < 255) {
-            data->idle_frames++;
-        }
-        if (data->idle_frames >= 125) {
-            k_timer_stop(&data->poll_timer);
-            // We are going to sleep! Re-enable the interrupt so the sensor can wake us up later.
-            pmw3610_set_interrupt(dev, true);
-        }
-    } else if (motion == 1) {
-        data->idle_frames = 0;
-    }
+    pmw3610_report_data(dev);
 }
 
 static void pmw3610_timer_handler(struct k_timer *timer) {
