@@ -531,9 +531,9 @@ static int pmw3610_report_data(const struct device *dev) {
     // Stop SPI clock to save power
     pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
 
-    // PMW3610 XY_H format: Bits 7:4 are X_H, Bits 3:0 are Y_H
-    uint16_t raw_x = xl | ((xyh & 0xF0) << 4);
-    uint16_t raw_y = yl | ((xyh & 0x0F) << 8);
+    // PMW3610 XY_H format: Bits 7:4 are Y_H, Bits 3:0 are X_H
+    uint16_t raw_x = xl | ((xyh & 0x0F) << 8);
+    uint16_t raw_y = yl | ((xyh & 0xF0) << 4);
     int16_t x = sign_extend_12(raw_x);
     int16_t y = sign_extend_12(raw_y);
 
