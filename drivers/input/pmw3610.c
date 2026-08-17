@@ -491,8 +491,6 @@ static inline int16_t sign_extend_12(uint16_t val) {
 static int pmw3610_report_data(const struct device *dev) {
     struct pixart_data *data = dev->data;
     const struct pixart_config *config = dev->config;
-    uint8_t buf[PMW3610_BURST_SIZE];
-
     if (unlikely(!data->ready)) {
         LOG_WRN("Device is not initialized yet");
         return -EBUSY;
@@ -511,29 +509,31 @@ static int pmw3610_report_data(const struct device *dev) {
 	pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_ENABLE);
 	k_busy_wait(300);
 
-	// Read Motion Register first (this freezes delta registers until XY_H is read)
-    // Latch motion data into burst buffer
-    pmw3610_write_reg(dev, PMW3610_REG_MOTION_BURST, 0x00);
-    k_busy_wait(20);
-
-    // Read all 7 bytes via burst read to avoid any data clearing race conditions
-    int err = pmw3610_read(dev, PMW3610_REG_MOTION_BURST, buf, PMW3610_BURST_SIZE);
+    // Read Motion Register first (this freezes delta registers until XY_H is read)
+    uint8_t mot = 0;
+    int err = pmw3610_read_reg(dev, PMW3610_REG_MOTION, &mot);
     if (err) {
         return err;
     }
 
-    // Stop SPI clock to save power
-    pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
-
     // Check if motion is actually present (bit 7 of Motion register)
-    if (!(buf[0] & 0x80)) {
+    if (!(mot & 0x80)) {
+        // Stop SPI clock to save power
+        pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
         return 0; // no movement
     }
 
-    // Restore full 12-bit math since Burst Read captures all bytes perfectly!
+    uint8_t xl = 0, yl = 0, xyh = 0;
+    pmw3610_read_reg(dev, PMW3610_REG_DELTA_X_L, &xl);
+    pmw3610_read_reg(dev, PMW3610_REG_DELTA_Y_L, &yl);
+    pmw3610_read_reg(dev, PMW3610_REG_DELTA_XY_H, &xyh);
+
+    // Stop SPI clock to save power
+    pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
+
     // PMW3610 XY_H format: Bits 7:4 are X_H, Bits 3:0 are Y_H
-    uint16_t raw_x = buf[1] | ((buf[3] & 0xF0) << 4);
-    uint16_t raw_y = buf[2] | ((buf[3] & 0x0F) << 8);
+    uint16_t raw_x = xl | ((xyh & 0xF0) << 4);
+    uint16_t raw_y = yl | ((xyh & 0x0F) << 8);
     int16_t x = sign_extend_12(raw_x);
     int16_t y = sign_extend_12(raw_y);
 
