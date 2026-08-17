@@ -579,10 +579,12 @@ static void pmw3610_work_callback(struct k_work *work) {
     int motion = pmw3610_report_data(dev);
     pmw3610_set_interrupt(dev, true);
 
-    // Smart Polling: stop the 125Hz timer after 5 consecutive empty frames (40ms)
+    // Smart Polling: stop the 125Hz timer after 1 second of NO motion (125 frames)
     if (motion == 0) {
-        data->idle_frames++;
-        if (data->idle_frames >= 5) {
+        if (data->idle_frames < 255) {
+            data->idle_frames++;
+        }
+        if (data->idle_frames >= 125) {
             k_timer_stop(&data->poll_timer);
         }
     } else if (motion == 1) {
