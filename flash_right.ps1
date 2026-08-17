@@ -41,10 +41,13 @@ if (Test-Path $downloadDir) {
 }
 New-Item -ItemType Directory -Path $downloadDir | Out-Null
 
-Write-Host "`n--> Downloading 'charybdis_right' artifact..." -ForegroundColor Yellow
-gh run download $runId -n charybdis_right -D $downloadDir
+Write-Host "`n--> Downloading firmware artifact..." -ForegroundColor Yellow
+gh run download $runId -D $downloadDir
 
-$uf2File = Get-ChildItem -Path $downloadDir -Filter "*.uf2" -Recurse | Select-Object -First 1
+$uf2File = Get-ChildItem -Path $downloadDir -Filter "*charybdis_right*.uf2" -Recurse | Select-Object -First 1
+if (-not $uf2File) {
+    $uf2File = Get-ChildItem -Path $downloadDir -Filter "*.uf2" -Recurse | Select-Object -First 1
+}
 
 if (-not $uf2File) {
     Write-Error "Could not find a .uf2 firmware file in the downloaded artifact."
