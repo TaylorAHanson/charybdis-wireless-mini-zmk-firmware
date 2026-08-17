@@ -106,9 +106,6 @@ static int pmw3610_read(const struct device *dev, uint8_t addr, uint8_t *value, 
 
 	// Read Data
 	for (int i = 0; i < len; i++) {
-        if (i > 0) {
-            k_busy_wait(10); // tLOAD min 10us between bytes
-        }
 		value[i] = bitbang_read_byte(cfg);
 	}
 
@@ -534,9 +531,9 @@ static int pmw3610_report_data(const struct device *dev) {
     }
 
     // Restore full 12-bit math since Burst Read captures all bytes perfectly!
-    // PMW3610 XY_H format: Bits 7:4 are Y_H, Bits 3:0 are X_H
-    uint16_t raw_x = buf[1] | ((buf[3] & 0x0F) << 8);
-    uint16_t raw_y = buf[2] | ((buf[3] & 0xF0) << 4);
+    // PMW3610 XY_H format: Bits 7:4 are X_H, Bits 3:0 are Y_H
+    uint16_t raw_x = buf[1] | ((buf[3] & 0xF0) << 4);
+    uint16_t raw_y = buf[2] | ((buf[3] & 0x0F) << 8);
     int16_t x = sign_extend_12(raw_x);
     int16_t y = sign_extend_12(raw_y);
 
