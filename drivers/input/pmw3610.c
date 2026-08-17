@@ -508,6 +508,7 @@ static int pmw3610_report_data(const struct device *dev) {
     // Read Motion Register first (this freezes delta registers until XY_H is read)
     uint8_t mot = 0;
     int err = pmw3610_read_reg(dev, PMW3610_REG_MOTION, &mot);
+    LOG_INF("PMW3610 sample: mot=0x%02x err=%d ready=%d", mot, err, data->ready);
     if (err) {
         return err;
     }
