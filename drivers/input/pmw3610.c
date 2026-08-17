@@ -543,14 +543,21 @@ static int pmw3610_report_data(const struct device *dev) {
     x = rot_x;
     y = rot_y;
 
-    if (x != 0) {
-        input_report_rel(dev, config->x_input_code, x, true, K_NO_WAIT);
+    bool have_x = x != 0;
+    bool have_y = y != 0;
+
+    if (have_x) {
+        input_report_rel(dev, config->x_input_code, x, !have_y, K_NO_WAIT);
     }
-    if (y != 0) {
+    if (have_y) {
         input_report_rel(dev, config->y_input_code, y, true, K_NO_WAIT);
     }
 
-    return 1; // Return 1 to indicate motion occurred
+    if (have_x || have_y) {
+        return 1; // Return 1 to indicate motion occurred
+    }
+    
+    return 0; // No motion
 }
 
 static void pmw3610_gpio_callback(const struct device *gpiob, struct gpio_callback *cb,
