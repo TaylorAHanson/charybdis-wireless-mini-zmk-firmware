@@ -8,7 +8,7 @@
 
 &msc {
     delay-ms = <0>;
-    time-to-max-speed-ms = <300>;
+    time-to-max-speed-ms = <80>;
     acceleration-exponent = <1>;
 };
 
