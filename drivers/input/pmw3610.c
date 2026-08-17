@@ -509,6 +509,11 @@ static int pmw3610_report_data(const struct device *dev) {
         return err;
     }
 
+    // Motion is ONLY valid and latched when Bit 7 (MOT) is 1
+    if (!(mot & 0x80)) {
+        return 0; // No motion latched
+    }
+
     uint8_t xl = 0, yl = 0, xyh = 0;
     pmw3610_read_reg(dev, PMW3610_REG_DELTA_X_L, &xl);
     pmw3610_read_reg(dev, PMW3610_REG_DELTA_Y_L, &yl);
@@ -520,22 +525,19 @@ static int pmw3610_report_data(const struct device *dev) {
     int16_t x = sign_extend_12(raw_x);
     int16_t y = sign_extend_12(raw_y);
 
-    if (x != 0 || y != 0 || (mot & 0x80)) {
-        // Apply exact mathematical inverse matrix to correct for Charybdis 45-degree sensor rotation
-        int16_t rot_x = x + y;
-        int16_t rot_y = x - y;
-        LOG_DBG("Motion: mot=0x%02x raw=(%d, %d) rot=(%d, %d)", mot, x, y, rot_x, rot_y);
+    // Apply exact mathematical inverse matrix to correct for Charybdis 45-degree sensor rotation
+    int16_t rot_x = x + y;
+    int16_t rot_y = x - y;
+    LOG_DBG("Motion: mot=0x%02x raw=(%d, %d) rot=(%d, %d)", mot, x, y, rot_x, rot_y);
 
-        if (rot_x != 0) {
-            input_report_rel(dev, config->x_input_code, rot_x, rot_y == 0, K_NO_WAIT);
-        }
-        if (rot_y != 0) {
-            input_report_rel(dev, config->y_input_code, rot_y, true, K_NO_WAIT);
-        }
-        return 1;
+    if (rot_x != 0) {
+        input_report_rel(dev, config->x_input_code, rot_x, rot_y == 0, K_NO_WAIT);
+    }
+    if (rot_y != 0) {
+        input_report_rel(dev, config->y_input_code, rot_y, true, K_NO_WAIT);
     }
 
-    return 0; // No motion
+    return (rot_x != 0 || rot_y != 0) ? 1 : 0;
 }
 
 static void pmw3610_gpio_callback(const struct device *gpiob, struct gpio_callback *cb,
