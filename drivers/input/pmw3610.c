@@ -501,23 +501,12 @@ static int pmw3610_report_data(const struct device *dev) {
     int64_t now = k_uptime_get();
 #endif
 
-	// Wake up SPI clock
-	pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_ENABLE);
-	k_busy_wait(300);
-
-    // Read Motion Register first (this freezes delta registers until XY_H is read)
+    // Read Motion Register (0x02) to latch delta registers
     uint8_t mot = 0;
     int err = pmw3610_read_reg(dev, PMW3610_REG_MOTION, &mot);
-    LOG_INF("PMW3610 sample: mot=0x%02x err=%d ready=%d", mot, err, data->ready);
     if (err) {
+        LOG_ERR("Failed to read motion register: %d", err);
         return err;
-    }
-
-    // Check if motion is actually present (bit 7 of Motion register)
-    if (!(mot & 0x80)) {
-        // Stop SPI clock to save power
-        pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
-        return 0; // no movement
     }
 
     uint8_t xl = 0, yl = 0, xyh = 0;
@@ -525,40 +514,27 @@ static int pmw3610_report_data(const struct device *dev) {
     pmw3610_read_reg(dev, PMW3610_REG_DELTA_Y_L, &yl);
     pmw3610_read_reg(dev, PMW3610_REG_DELTA_XY_H, &xyh);
 
-    // Stop SPI clock to save power
-    pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
-
     // PMW3610 XY_H format: Bits 7:4 are X_H, Bits 3:0 are Y_H
     uint16_t raw_x = xl | ((xyh & 0xF0) << 4);
     uint16_t raw_y = yl | ((xyh & 0x0F) << 8);
     int16_t x = sign_extend_12(raw_x);
     int16_t y = sign_extend_12(raw_y);
 
-    // Apply exact mathematical inverse matrix to correct for Charybdis 45-degree sensor rotation
-    // This perfectly aligns the diagonal tracking to orthogonal up/down/left/right
-    int16_t rot_x = x + y;
-    int16_t rot_y = x - y;
-    x = rot_x;
-    y = rot_y;
+    if (x != 0 || y != 0 || (mot & 0x80)) {
+        // Apply exact mathematical inverse matrix to correct for Charybdis 45-degree sensor rotation
+        int16_t rot_x = x + y;
+        int16_t rot_y = x - y;
+        LOG_DBG("Motion: mot=0x%02x raw=(%d, %d) rot=(%d, %d)", mot, x, y, rot_x, rot_y);
 
-    bool have_x = x != 0;
-    bool have_y = y != 0;
-
-    if (have_x || have_y) {
-        LOG_INF("Trackball Motion: raw=(%d, %d) rot=(%d, %d)", x, y, rot_x, rot_y);
+        if (rot_x != 0) {
+            input_report_rel(dev, config->x_input_code, rot_x, rot_y == 0, K_NO_WAIT);
+        }
+        if (rot_y != 0) {
+            input_report_rel(dev, config->y_input_code, rot_y, true, K_NO_WAIT);
+        }
+        return 1;
     }
 
-    if (have_x) {
-        input_report_rel(dev, config->x_input_code, x, !have_y, K_NO_WAIT);
-    }
-    if (have_y) {
-        input_report_rel(dev, config->y_input_code, y, true, K_NO_WAIT);
-    }
-
-    if (have_x || have_y) {
-        return 1; // Return 1 to indicate motion occurred
-    }
-    
     return 0; // No motion
 }
 
