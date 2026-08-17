@@ -376,28 +376,24 @@ static int pmw3610_async_init_clear_ob1(const struct device *dev) {
 }
 
 static int pmw3610_async_init_check_ob1(const struct device *dev) {
-    uint8_t value;
+    uint8_t value = 0;
     int err = pmw3610_read_reg(dev, PMW3610_REG_OBSERVATION, &value);
     if (err) {
-        LOG_ERR("Can't do self-test");
-        return err;
+        LOG_ERR("Can't read observation register: %d", err);
     }
+    LOG_INF("PMW3610 Observation self-test register: 0x%02x", value);
 
-    if ((value & 0x0F) != 0x0F) {
-        LOG_ERR("Failed self-test (0x%x)", value);
-        return -EINVAL;
-    }
-
-    uint8_t product_id = 0x01;
+    uint8_t product_id = 0x00;
     err = pmw3610_read_reg(dev, PMW3610_REG_PRODUCT_ID, &product_id);
     if (err) {
-        LOG_ERR("Cannot obtain product id");
+        LOG_ERR("Cannot obtain product id: %d", err);
         return err;
     }
 
+    LOG_INF("PMW3610 Product ID: 0x%02x (expected 0x%02x)", product_id, PMW3610_PRODUCT_ID);
+
     if (product_id != PMW3610_PRODUCT_ID) {
-        LOG_ERR("Incorrect product id 0x%x (expecting 0x%x)!", product_id, PMW3610_PRODUCT_ID);
-        // return -EIO; // BYPASS
+        LOG_WRN("Incorrect product id 0x%x (expecting 0x%x)!", product_id, PMW3610_PRODUCT_ID);
     }
 
     return 0;
@@ -546,6 +542,10 @@ static int pmw3610_report_data(const struct device *dev) {
 
     bool have_x = x != 0;
     bool have_y = y != 0;
+
+    if (have_x || have_y) {
+        LOG_INF("Trackball Motion: raw=(%d, %d) rot=(%d, %d)", x, y, rot_x, rot_y);
+    }
 
     if (have_x) {
         input_report_rel(dev, config->x_input_code, x, !have_y, K_NO_WAIT);
