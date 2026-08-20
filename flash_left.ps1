@@ -1,11 +1,6 @@
 <#
 .SYNOPSIS
-    Automated ZMK Firmware Downloader and Flasher for Charybdis Right Half.
-.DESCRIPTION
-    1. Watches the active or latest GitHub Actions run until it completes.
-    2. Downloads and unpacks the charybdis_right UF2 artifact.
-    3. Prompts the user to double-click the reset button on the nice!nano.
-    4. Automatically detects the NICENANO drive (D:\ or any removable drive) and copies the UF2 file.
+    Automated ZMK Firmware Downloader and Flasher for Charybdis Left Half.
 #>
 
 param (
@@ -13,7 +8,7 @@ param (
 )
 
 Write-Host "`n================================================" -ForegroundColor Cyan
-Write-Host "   Charybdis ZMK Auto-Flash & Build Watcher" -ForegroundColor Cyan
+Write-Host "   Charybdis Left-Half ZMK Auto-Flash" -ForegroundColor Cyan
 Write-Host "================================================`n" -ForegroundColor Cyan
 
 # 1. Check gh CLI status
@@ -54,26 +49,21 @@ New-Item -ItemType Directory -Path $downloadDir | Out-Null
 Write-Host "`n--> Downloading firmware artifact..." -ForegroundColor Yellow
 gh run download $runId -D $downloadDir
 
-$uf2File = Get-ChildItem -Path $downloadDir -Filter "*charybdis_right*.uf2" -Recurse | Select-Object -First 1
+$uf2File = Get-ChildItem -Path $downloadDir -Filter "*charybdis_left*.uf2" -Recurse | Select-Object -First 1
 if (-not $uf2File) {
-    $uf2File = Get-ChildItem -Path $downloadDir -Filter "*.uf2" -Recurse | Select-Object -First 1
-}
-
-if (-not $uf2File) {
-    Write-Error "Could not find a .uf2 firmware file in the downloaded artifact."
+    Write-Error "Could not find charybdis_left.uf2 in the downloaded artifact."
     exit 1
 }
 
 Write-Host "--> Found Firmware: $($uf2File.Name) ($([math]::Round($uf2File.Length / 1KB, 1)) KB)" -ForegroundColor Green
 
 # 4. Wait for nice!nano bootloader drive
-Write-Host "`n[ACTION REQUIRED] Double-click the RESET button on your right-half nice!nano now..." -ForegroundColor Magenta
+Write-Host "`n[ACTION REQUIRED] Double-click the RESET button on your LEFT-HALF nice!nano now..." -ForegroundColor Magenta
 
 $driveLetter = ""
 while (-not $driveLetter) {
     Start-Sleep -Milliseconds 500
     
-    # Check explicitly for D: or volume labeled NICENANO
     $drives = Get-Volume | Where-Object { 
         $_.FileSystemLabel -match "NICENANO" -or 
         ($TargetDrive -and $_.DriveLetter -eq $TargetDrive.TrimEnd(':')) -or
@@ -91,10 +81,5 @@ Write-Host "--> Copying $($uf2File.Name) to $driveLetter\ ..." -ForegroundColor 
 Copy-Item -Path $uf2File.FullName -Destination "$driveLetter\" -Force
 
 Write-Host "`n================================================" -ForegroundColor Green
-Write-Host "   FLASH COMPLETE! Device rebooting..." -ForegroundColor Green
+Write-Host "   LEFT-HALF FLASH COMPLETE! Device rebooting..." -ForegroundColor Green
 Write-Host "================================================`n" -ForegroundColor Green
-
-# Optional: Open Bluetooth Settings for quick pairing
-Write-Host "--> Opening Windows Bluetooth Settings..." -ForegroundColor Cyan
-Start-Process "ms-settings:bluetooth"
-
