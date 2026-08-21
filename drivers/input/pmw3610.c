@@ -721,15 +721,20 @@ static const struct sensor_driver_api pmw3610_driver_api = {
 
 #if IS_ENABLED(CONFIG_PM_DEVICE)
 static int pmw3610_pm_action(const struct device *dev, enum pm_device_action action) {
+    struct pixart_data *data = dev->data;
     switch (action) {
     case PM_DEVICE_ACTION_SUSPEND:
+        k_timer_stop(&data->poll_timer);
+        k_work_cancel(&data->trigger_work);
         pmw3610_set_interrupt(dev, false);
         pmw3610_write_reg(dev, PMW3610_REG_SHUTDOWN, 0xB6); // Power down sensor
         return 0;
     case PM_DEVICE_ACTION_RESUME:
         pmw3610_write_reg(dev, PMW3610_REG_POWER_UP_RESET, PMW3610_POWERUP_CMD_RESET); // Wake up
-        k_busy_wait(300);
+        k_busy_wait(1000);
         pmw3610_set_interrupt(dev, true);
+        data->idle_frames = 0;
+        k_timer_start(&data->poll_timer, K_MSEC(8), K_MSEC(8));
         return 0;
     default:
         return -ENOTSUP;
